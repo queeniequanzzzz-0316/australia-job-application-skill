@@ -1,0 +1,282 @@
+import csv
+import pathlib
+import subprocess
+import tempfile
+import unittest
+
+import yaml
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts" / "initialise_workspace.py"
+TEMPLATE_ROOT = ROOT / "assets" / "workspace-template"
+
+EXPECTED_DIRECTORIES = {
+    "profile",
+    "filters",
+    "jobs",
+    "jobs/snapshots",
+    "resumes",
+    "cover-letters",
+    "tracker",
+    "reports",
+    "dashboard",
+}
+
+EXPECTED_FILES = {
+    "profile/candidate-profile.yaml",
+    "profile/analytics-consent.yaml",
+    "filters/search-filter.yaml",
+    "tracker/applications.csv",
+    "tracker/events.jsonl",
+}
+
+APPLICATION_HEADER = [
+    "canonical_job_id",
+    "jd_snapshot_path",
+    "source",
+    "canonical_url",
+    "job_title",
+    "company",
+    "location",
+    "discovery_status",
+    "verification_status",
+    "application_status",
+    "first_seen_at",
+    "last_verified_at",
+    "applied_at",
+    "interview_at",
+    "offer_at",
+]
+
+
+class InitialiseWorkspaceTests(unittest.TestCase):
+    def run_initializer(self, *arguments, cwd=None):
+        return subprocess.run(
+            ["python3", str(SCRIPT), *map(str, arguments)],
+            cwd=cwd or ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def initialise(self, destination):
+        result = self.run_initializer("--destination", destination)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_creates_exact_workspace_structure_and_defaults(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            destination = pathlib.Path(temporary_directory) / "private-workspace"
+
+            self.initialise(destination)
+
+            actual_directories = {
+                str(path.relative_to(destination))
+                for path in destination.rglob("*")
+                if path.is_dir()
+            }
+            actual_files = {
+                str(path.relative_to(destination))
+                for path in destination.rglob("*")
+                if path.is_file()
+            }
+            self.assertEqual(actual_directories, EXPECTED_DIRECTORIES)
+            self.assertEqual(actual_files, EXPECTED_FILES)
+
+            candidate_profile = yaml.safe_load(
+                (destination / "profile" / "candidate-profile.yaml").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(candidate_profile["market"], "Australia")
+            self.assertEqual(candidate_profile["candidate_location_mode"], "onshore")
+            self.assertEqual(candidate_profile["employment_streams"], "professional")
+            self.assertEqual(candidate_profile["target_roles"], [])
+            self.assertEqual(candidate_profile["target_locations"], [])
+            self.assertEqual(
+                candidate_profile["work_rights"],
+                {
+                    "status": "unknown",
+                    "restrictions": "unknown",
+                    "sponsorship_required": "unknown",
+                },
+            )
+            self.assertEqual(
+                candidate_profile["salary"],
+                {"basis": "annual", "target_aud": None},
+            )
+            self.assertEqual(candidate_profile["evidence_inventory"], [])
+
+            search_filter = yaml.safe_load(
+                (destination / "filters" / "search-filter.yaml").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(search_filter["top_n"], 20)
+            self.assertEqual(search_filter["sources"], ["SEEK", "LinkedIn", "Indeed"])
+            self.assertEqual(search_filter["locations"], [])
+            self.assertEqual(search_filter["employment_types"], [])
+            self.assertEqual(
+                search_filter["salary_bounds"],
+                {"minimum_aud": None, "maximum_aud": None},
+            )
+            self.assertEqual(
+                search_filter["rate_bounds"],
+                {"minimum_aud_per_hour": None, "maximum_aud_per_hour": None},
+            )
+            self.assertEqual(search_filter["remote_preference"], "unknown")
+            self.assertEqual(search_filter["sponsorship_need"], "unknown")
+            self.assertIsNone(search_filter["recency_days"])
+            self.assertEqual(search_filter["exclusions"], [])
+            self.assertEqual(search_filter["hard_gates"], [])
+            self.assertIs(search_filter["confirmed"], False)
+
+            analytics_consent = yaml.safe_load(
+                (destination / "profile" / "analytics-consent.yaml").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                analytics_consent,
+                {
+                    "scheduled_workflows": {
+                        "morning_discovery": False,
+                        "evening_check_in": False,
+                    },
+                    "cross_user_analytics": {
+                        "enabled": False,
+                        "share_salary_band": False,
+                        "share_broad_work_rights": False,
+                    },
+                },
+            )
+
+            with (destination / "tracker" / "applications.csv").open(
+                newline="", encoding="utf-8"
+            ) as applications_file:
+                self.assertEqual(next(csv.reader(applications_file)), APPLICATION_HEADER)
+                self.assertEqual(list(csv.reader(applications_file)), [])
+
+            self.assertEqual(
+                (destination / "tracker" / "events.jsonl").read_bytes(), b""
+            )
+
+    def test_rerun_without_force_preserves_candidate_profile(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            destination = pathlib.Path(temporary_directory) / "private-workspace"
+            self.initialise(destination)
+            candidate_path = destination / "profile" / "candidate-profile.yaml"
+            private_candidate_profile = "candidate_name: Private Candidate\n"
+            candidate_path.write_text(private_candidate_profile, encoding="utf-8")
+
+            self.initialise(destination)
+
+            self.assertEqual(
+                candidate_path.read_text(encoding="utf-8"), private_candidate_profile
+            )
+
+    def test_force_restores_only_candidate_profile_and_preserves_history(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            destination = pathlib.Path(temporary_directory) / "private-workspace"
+            self.initialise(destination)
+
+            candidate_path = destination / "profile" / "candidate-profile.yaml"
+            search_filter_path = destination / "filters" / "search-filter.yaml"
+            consent_path = destination / "profile" / "analytics-consent.yaml"
+            applications_path = destination / "tracker" / "applications.csv"
+            events_path = destination / "tracker" / "events.jsonl"
+
+            candidate_path.write_text("candidate_name: Private Candidate\n", encoding="utf-8")
+            search_filter_contents = "confirmed: true\n"
+            consent_contents = "scheduled_workflows:\n  morning_discovery: true\n"
+            applications_contents = (
+                ",".join(APPLICATION_HEADER)
+                + "\njob-1,jobs/snapshots/job-1.yaml,SEEK,https://example.invalid/job-1,"
+                "Example Role,Example Company,Melbourne,discovered,verified,draft,"
+                "2026-09-10T00:00:00Z,,,,\n"
+            )
+            events_contents = '{"event": "example"}\n'
+            search_filter_path.write_text(search_filter_contents, encoding="utf-8")
+            consent_path.write_text(consent_contents, encoding="utf-8")
+            applications_path.write_text(applications_contents, encoding="utf-8")
+            events_path.write_text(events_contents, encoding="utf-8")
+
+            result = self.run_initializer("--destination", destination, "--force")
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            self.assertEqual(
+                candidate_path.read_bytes(),
+                (TEMPLATE_ROOT / "candidate-profile.example.yaml").read_bytes(),
+            )
+            self.assertEqual(
+                search_filter_path.read_text(encoding="utf-8"), search_filter_contents
+            )
+            self.assertEqual(consent_path.read_text(encoding="utf-8"), consent_contents)
+            self.assertEqual(
+                applications_path.read_text(encoding="utf-8"), applications_contents
+            )
+            self.assertEqual(events_path.read_text(encoding="utf-8"), events_contents)
+
+    def test_destination_is_required_and_no_public_default_is_created(self):
+        public_default = ROOT / "job-search-workspace"
+        self.assertFalse(public_default.exists())
+
+        result = self.run_initializer(cwd=ROOT)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(public_default.exists())
+
+    def test_destination_inside_public_repository_is_rejected(self):
+        with tempfile.TemporaryDirectory(
+            dir=ROOT, prefix=".task3-boundary-test-"
+        ) as temporary_directory:
+            destination = pathlib.Path(temporary_directory) / "private-workspace"
+
+            result = self.run_initializer("--destination", destination)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(destination.exists())
+
+    def test_public_templates_contain_no_candidate_or_contact_data(self):
+        yaml_templates = (
+            TEMPLATE_ROOT / "candidate-profile.example.yaml",
+            TEMPLATE_ROOT / "search-filter.example.yaml",
+            TEMPLATE_ROOT / "analytics-consent.example.yaml",
+        )
+        allowed_public_values = {
+            None,
+            False,
+            20,
+            "Australia",
+            "onshore",
+            "professional",
+            "unknown",
+            "annual",
+            "SEEK",
+            "LinkedIn",
+            "Indeed",
+        }
+
+        def assert_safe_values(value, path):
+            if isinstance(value, dict):
+                for key, nested_value in value.items():
+                    assert_safe_values(nested_value, f"{path}.{key}")
+                return
+            if isinstance(value, list):
+                for index, nested_value in enumerate(value):
+                    assert_safe_values(nested_value, f"{path}[{index}]")
+                return
+            self.assertIn(value, allowed_public_values, f"unsafe value at {path}")
+
+        for template_path in yaml_templates:
+            with self.subTest(template=template_path.name):
+                contents = yaml.safe_load(template_path.read_text(encoding="utf-8"))
+                assert_safe_values(contents, template_path.name)
+
+        applications_template = TEMPLATE_ROOT / "applications.example.csv"
+        with applications_template.open(newline="", encoding="utf-8") as csv_file:
+            self.assertEqual(list(csv.reader(csv_file)), [APPLICATION_HEADER])
+
+
+if __name__ == "__main__":
+    unittest.main()

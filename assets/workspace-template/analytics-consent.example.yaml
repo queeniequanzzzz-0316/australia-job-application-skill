@@ -1,0 +1,7 @@
+scheduled_workflows:
+  morning_discovery: false
+  evening_check_in: false
+cross_user_analytics:
+  enabled: false
+  share_salary_band: false
+  share_broad_work_rights: false

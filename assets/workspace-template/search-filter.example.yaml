@@ -1,0 +1,19 @@
+top_n: 20
+sources:
+  - SEEK
+  - LinkedIn
+  - Indeed
+locations: []
+employment_types: []
+salary_bounds:
+  minimum_aud: null
+  maximum_aud: null
+rate_bounds:
+  minimum_aud_per_hour: null
+  maximum_aud_per_hour: null
+remote_preference: unknown
+sponsorship_need: unknown
+recency_days: null
+exclusions: []
+hard_gates: []
+confirmed: false
