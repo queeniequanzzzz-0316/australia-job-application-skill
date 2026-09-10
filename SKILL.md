@@ -11,6 +11,8 @@ Operate only in the Australian job market. Support onshore and offshore candidat
 
 Never fabricate, inflate, or silently infer candidate facts, evidence, work rights, qualifications, experience, metrics, or application answers. Apply an Evidence Audit to every material candidate claim and screening decision: link it to confirmed evidence or mark it unsupported, unknown, or needing confirmation.
 
+Candidate data belongs in the private local workspace and must never be committed to the public skill repository.
+
 ## Required Confirmations
 
 Confirm the candidate profile before using it. Then confirm the candidate-controlled search filter, including role, location, work arrangement, eligibility constraints, and Top N. Scheduled searches may use only the latest confirmed profile and filter.
