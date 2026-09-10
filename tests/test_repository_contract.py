@@ -58,6 +58,11 @@ class RepositoryContractTests(unittest.TestCase):
         interface = metadata["interface"]
         short_description = interface["short_description"]
 
+        self.assertIn("display_name", interface)
+        self.assertEqual(
+            interface["display_name"],
+            "Applying for Jobs in Australia",
+        )
         self.assertGreaterEqual(len(short_description), 25)
         self.assertLessEqual(len(short_description), 64)
         self.assertIn(
