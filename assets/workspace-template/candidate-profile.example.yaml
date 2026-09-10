@@ -1,6 +1,7 @@
 market: Australia
 candidate_location_mode: onshore
-employment_streams: professional
+employment_streams:
+  - professional
 target_roles: []
 target_locations: []
 work_rights:

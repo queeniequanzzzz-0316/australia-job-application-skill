@@ -90,7 +90,7 @@ class InitialiseWorkspaceTests(unittest.TestCase):
             )
             self.assertEqual(candidate_profile["market"], "Australia")
             self.assertEqual(candidate_profile["candidate_location_mode"], "onshore")
-            self.assertEqual(candidate_profile["employment_streams"], "professional")
+            self.assertEqual(candidate_profile["employment_streams"], ["professional"])
             self.assertEqual(candidate_profile["target_roles"], [])
             self.assertEqual(candidate_profile["target_locations"], [])
             self.assertEqual(
