@@ -1,0 +1,4 @@
+interface:
+  display_name: "Applying for Jobs in Australia"
+  short_description: "Evidence-based Australian job search and application guidance"
+  default_prompt: "Use $applying-for-jobs-in-australia to guide my Australian job search safely."
