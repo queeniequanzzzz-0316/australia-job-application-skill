@@ -447,6 +447,34 @@ class InitialiseWorkspaceTests(unittest.TestCase):
             self.assert_generic_unsafe_path_error(result, destination)
             self.assertEqual(self.snapshot_tree(root), tree_before)
 
+    def test_mutation_permission_error_uses_generic_private_error(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination_parent = root / "private-parent"
+            destination = destination_parent / "private-workspace"
+            permission_probe = destination_parent / "permission-probe"
+            destination_parent.mkdir()
+            destination_parent.chmod(0o500)
+
+            try:
+                try:
+                    permission_probe.mkdir()
+                except PermissionError:
+                    pass
+                else:
+                    permission_probe.rmdir()
+                    self.skipTest("filesystem does not enforce directory write denial")
+
+                tree_before = self.snapshot_tree(root)
+
+                result = self.run_initializer("--destination", destination)
+
+                self.assert_generic_unsafe_path_error(result, destination)
+                self.assertFalse(destination.exists())
+                self.assertEqual(self.snapshot_tree(root), tree_before)
+            finally:
+                destination_parent.chmod(0o700)
+
     def test_public_templates_contain_no_candidate_or_contact_data(self):
         yaml_templates = (
             TEMPLATE_ROOT / "candidate-profile.example.yaml",

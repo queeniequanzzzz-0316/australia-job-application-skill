@@ -198,7 +198,7 @@ def main():
     try:
         destination = validate_private_destination(arguments.destination)
         initialise_workspace(destination, arguments.force)
-    except UnsafeWorkspacePathError:
+    except (UnsafeWorkspacePathError, OSError):
         parser.error("unsafe workspace path")
 
 
