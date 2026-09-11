@@ -74,27 +74,28 @@ def parse_arguments():
 
 
 def validate_private_destination(destination):
-    expanded_destination = destination.expanduser()
-    destination_parent = expanded_destination.parent
-    if (
-        not destination_parent.exists()
-        or not destination_parent.is_dir()
-        or destination_parent.is_symlink()
-        or expanded_destination.is_symlink()
-    ):
-        raise UnsafeWorkspacePathError
-
     try:
-        resolved_destination = expanded_destination.resolve()
-    except (OSError, RuntimeError) as error:
-        raise UnsafeWorkspacePathError from error
+        expanded_destination = destination.expanduser()
+        destination_parent = expanded_destination.parent
+        if (
+            not destination_parent.exists()
+            or not destination_parent.is_dir()
+            or destination_parent.is_symlink()
+            or expanded_destination.is_symlink()
+        ):
+            raise UnsafeWorkspacePathError
 
-    resolved_repository = REPOSITORY_ROOT.resolve()
-    if (
-        resolved_destination == resolved_repository
-        or resolved_repository in resolved_destination.parents
-    ):
-        raise UnsafeWorkspacePathError
+        resolved_destination = expanded_destination.resolve()
+        resolved_repository = REPOSITORY_ROOT.resolve()
+        if (
+            resolved_destination == resolved_repository
+            or resolved_repository in resolved_destination.parents
+        ):
+            raise UnsafeWorkspacePathError
+    except UnsafeWorkspacePathError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise UnsafeWorkspacePathError from error
     return resolved_destination
 
 

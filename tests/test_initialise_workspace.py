@@ -380,6 +380,21 @@ class InitialiseWorkspaceTests(unittest.TestCase):
             self.assertNotIn(str(missing_parent), result.stderr)
             self.assertFalse(missing_parent.exists())
 
+    def test_filesystem_validation_error_uses_generic_private_error(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            private_component = "private-" + ("x" * 300)
+            destination = root / private_component
+            self.assertEqual(list(root.iterdir()), [])
+
+            result = self.run_initializer("--destination", destination)
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("error: unsafe workspace path", result.stderr.lower())
+            self.assertNotIn("traceback", result.stderr.lower())
+            self.assertNotIn(private_component, result.stderr)
+            self.assertEqual(list(root.iterdir()), [])
+
     def test_public_templates_contain_no_candidate_or_contact_data(self):
         yaml_templates = (
             TEMPLATE_ROOT / "candidate-profile.example.yaml",
