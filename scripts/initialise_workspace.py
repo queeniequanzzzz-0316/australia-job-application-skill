@@ -75,7 +75,13 @@ def parse_arguments():
 
 def validate_private_destination(destination):
     expanded_destination = destination.expanduser()
-    if expanded_destination.is_symlink():
+    destination_parent = expanded_destination.parent
+    if (
+        not destination_parent.exists()
+        or not destination_parent.is_dir()
+        or destination_parent.is_symlink()
+        or expanded_destination.is_symlink()
+    ):
         raise UnsafeWorkspacePathError
 
     try:
@@ -116,11 +122,19 @@ def validate_mutation_plan(destination):
     template_paths = [TEMPLATE_ROOT / name for name in TEMPLATE_FILES]
     validate_contained_paths(REPOSITORY_ROOT, [TEMPLATE_ROOT, *template_paths])
 
+    workspace_file_paths = [destination / path for path in WORKSPACE_FILES]
     workspace_paths = [
         *(destination / path for path in WORKSPACE_DIRECTORIES),
-        *(destination / path for path in WORKSPACE_FILES),
+        *workspace_file_paths,
     ]
     validate_contained_paths(destination, workspace_paths)
+
+    try:
+        for path in workspace_file_paths:
+            if path.exists() and path.is_file() and path.stat().st_nlink > 1:
+                raise UnsafeWorkspacePathError
+    except OSError as error:
+        raise UnsafeWorkspacePathError from error
 
 
 def validate_applications_template():

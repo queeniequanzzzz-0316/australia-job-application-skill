@@ -1,4 +1,5 @@
 import csv
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -327,6 +328,57 @@ class InitialiseWorkspaceTests(unittest.TestCase):
             destination.symlink_to(outside_directory, target_is_directory=True)
 
             self.assert_unsafe_workspace_is_rejected(destination, outside_directory)
+
+    def test_force_rejects_hard_link_without_modifying_outside_file_or_workspace(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            outside_directory = root / "outside"
+            outside_sentinel = outside_directory / "candidate-profile.yaml"
+            self.initialise(destination)
+            outside_directory.mkdir()
+            outside_contents = b"outside sentinel\n"
+            outside_sentinel.write_bytes(outside_contents)
+
+            candidate_path = destination / "profile" / "candidate-profile.yaml"
+            candidate_path.unlink()
+            os.link(outside_sentinel, candidate_path)
+            workspace_before = {
+                str(path.relative_to(destination)): (
+                    path.read_bytes() if path.is_file() else None
+                )
+                for path in destination.rglob("*")
+            }
+
+            result = self.run_initializer("--destination", destination, "--force")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unsafe workspace path", result.stderr.lower())
+            self.assertNotIn(str(outside_sentinel.resolve()), result.stderr)
+            self.assertEqual(outside_sentinel.read_bytes(), outside_contents)
+            self.assertEqual(
+                {
+                    str(path.relative_to(destination)): (
+                        path.read_bytes() if path.is_file() else None
+                    )
+                    for path in destination.rglob("*")
+                },
+                workspace_before,
+            )
+
+    def test_rejects_missing_destination_parent_without_creating_it(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            missing_parent = root / "missing-parent"
+            destination = missing_parent / "private-workspace"
+            self.assertFalse(missing_parent.exists())
+
+            result = self.run_initializer("--destination", destination)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unsafe workspace path", result.stderr.lower())
+            self.assertNotIn(str(missing_parent), result.stderr)
+            self.assertFalse(missing_parent.exists())
 
     def test_public_templates_contain_no_candidate_or_contact_data(self):
         yaml_templates = (
