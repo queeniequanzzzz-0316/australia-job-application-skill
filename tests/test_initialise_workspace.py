@@ -65,6 +65,21 @@ class InitialiseWorkspaceTests(unittest.TestCase):
         result = self.run_initializer("--destination", destination)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def snapshot_tree(self, root):
+        return {
+            str(path.relative_to(root)): (
+                "directory" if path.is_dir() else "file",
+                path.read_bytes() if path.is_file() else None,
+            )
+            for path in root.rglob("*")
+        }
+
+    def assert_generic_unsafe_path_error(self, result, private_path):
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("error: unsafe workspace path", result.stderr.lower())
+        self.assertNotIn("traceback", result.stderr.lower())
+        self.assertNotIn(str(private_path), result.stderr)
+
     def assert_unsafe_workspace_is_rejected(self, destination, outside_directory):
         workspace_before = sorted(
             str(path.relative_to(destination)) for path in destination.rglob("*")
@@ -394,6 +409,43 @@ class InitialiseWorkspaceTests(unittest.TestCase):
             self.assertNotIn("traceback", result.stderr.lower())
             self.assertNotIn(private_component, result.stderr)
             self.assertEqual(list(root.iterdir()), [])
+
+    def test_rejects_workspace_directory_path_that_is_a_file_before_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            destination.mkdir()
+            (destination / "filters").write_bytes(b"not a directory\n")
+            tree_before = self.snapshot_tree(root)
+
+            result = self.run_initializer("--destination", destination)
+
+            self.assert_generic_unsafe_path_error(result, destination)
+            self.assertEqual(self.snapshot_tree(root), tree_before)
+
+    def test_rejects_workspace_file_path_that_is_a_directory_before_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            (destination / "tracker" / "events.jsonl").mkdir(parents=True)
+            tree_before = self.snapshot_tree(root)
+
+            result = self.run_initializer("--destination", destination)
+
+            self.assert_generic_unsafe_path_error(result, destination)
+            self.assertEqual(self.snapshot_tree(root), tree_before)
+
+    def test_rejects_destination_that_is_a_file_before_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            destination.write_bytes(b"not a directory\n")
+            tree_before = self.snapshot_tree(root)
+
+            result = self.run_initializer("--destination", destination)
+
+            self.assert_generic_unsafe_path_error(result, destination)
+            self.assertEqual(self.snapshot_tree(root), tree_before)
 
     def test_public_templates_contain_no_candidate_or_contact_data(self):
         yaml_templates = (

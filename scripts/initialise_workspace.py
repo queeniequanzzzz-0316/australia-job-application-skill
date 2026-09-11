@@ -82,6 +82,10 @@ def validate_private_destination(destination):
             or not destination_parent.is_dir()
             or destination_parent.is_symlink()
             or expanded_destination.is_symlink()
+            or (
+                expanded_destination.exists()
+                and not expanded_destination.is_dir()
+            )
         ):
             raise UnsafeWorkspacePathError
 
@@ -123,18 +127,26 @@ def validate_mutation_plan(destination):
     template_paths = [TEMPLATE_ROOT / name for name in TEMPLATE_FILES]
     validate_contained_paths(REPOSITORY_ROOT, [TEMPLATE_ROOT, *template_paths])
 
-    workspace_file_paths = [destination / path for path in WORKSPACE_FILES]
-    workspace_paths = [
-        *(destination / path for path in WORKSPACE_DIRECTORIES),
-        *workspace_file_paths,
+    workspace_directory_paths = [
+        destination / path for path in WORKSPACE_DIRECTORIES
     ]
+    workspace_file_paths = [destination / path for path in WORKSPACE_FILES]
+    workspace_paths = [*workspace_directory_paths, *workspace_file_paths]
     validate_contained_paths(destination, workspace_paths)
 
     try:
-        for path in workspace_file_paths:
-            if path.exists() and path.is_file() and path.stat().st_nlink > 1:
+        for path in workspace_directory_paths:
+            if path.exists() and not path.is_dir():
                 raise UnsafeWorkspacePathError
-    except OSError as error:
+
+        for path in workspace_file_paths:
+            if path.exists() and (
+                not path.is_file() or path.stat().st_nlink > 1
+            ):
+                raise UnsafeWorkspacePathError
+    except UnsafeWorkspacePathError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
         raise UnsafeWorkspacePathError from error
 
 
