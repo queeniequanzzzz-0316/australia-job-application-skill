@@ -19,6 +19,21 @@ WORKSPACE_DIRECTORIES = (
     "dashboard",
 )
 
+WORKSPACE_FILES = (
+    "profile/candidate-profile.yaml",
+    "profile/analytics-consent.yaml",
+    "filters/search-filter.yaml",
+    "tracker/applications.csv",
+    "tracker/events.jsonl",
+)
+
+TEMPLATE_FILES = (
+    "candidate-profile.example.yaml",
+    "search-filter.example.yaml",
+    "applications.example.csv",
+    "analytics-consent.example.yaml",
+)
+
 APPLICATION_HEADER = (
     "canonical_job_id",
     "jd_snapshot_path",
@@ -38,6 +53,10 @@ APPLICATION_HEADER = (
 )
 
 
+class UnsafeWorkspacePathError(ValueError):
+    pass
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Initialize a private job search workspace.")
     parser.add_argument(
@@ -54,15 +73,54 @@ def parse_arguments():
     return parser.parse_args(), parser
 
 
-def validate_private_destination(destination, parser):
-    resolved_destination = destination.expanduser().resolve()
+def validate_private_destination(destination):
+    expanded_destination = destination.expanduser()
+    if expanded_destination.is_symlink():
+        raise UnsafeWorkspacePathError
+
+    try:
+        resolved_destination = expanded_destination.resolve()
+    except (OSError, RuntimeError) as error:
+        raise UnsafeWorkspacePathError from error
+
     resolved_repository = REPOSITORY_ROOT.resolve()
     if (
         resolved_destination == resolved_repository
         or resolved_repository in resolved_destination.parents
     ):
-        parser.error("--destination must be outside the public repository")
+        raise UnsafeWorkspacePathError
     return resolved_destination
+
+
+def validate_contained_paths(root, paths):
+    try:
+        resolved_root = root.resolve()
+        for path in paths:
+            relative_path = path.relative_to(root)
+            current_path = root
+            for part in relative_path.parts:
+                current_path /= part
+                if current_path.is_symlink():
+                    raise UnsafeWorkspacePathError
+
+            resolved_path = path.resolve()
+            if resolved_path != resolved_root and resolved_root not in resolved_path.parents:
+                raise UnsafeWorkspacePathError
+    except (OSError, RuntimeError, ValueError) as error:
+        if isinstance(error, UnsafeWorkspacePathError):
+            raise
+        raise UnsafeWorkspacePathError from error
+
+
+def validate_mutation_plan(destination):
+    template_paths = [TEMPLATE_ROOT / name for name in TEMPLATE_FILES]
+    validate_contained_paths(REPOSITORY_ROOT, [TEMPLATE_ROOT, *template_paths])
+
+    workspace_paths = [
+        *(destination / path for path in WORKSPACE_DIRECTORIES),
+        *(destination / path for path in WORKSPACE_FILES),
+    ]
+    validate_contained_paths(destination, workspace_paths)
 
 
 def validate_applications_template():
@@ -79,6 +137,7 @@ def copy_if_absent(source, destination):
 
 
 def initialise_workspace(destination, force):
+    validate_mutation_plan(destination)
     validate_applications_template()
 
     for relative_directory in WORKSPACE_DIRECTORIES:
@@ -109,8 +168,11 @@ def initialise_workspace(destination, force):
 
 def main():
     arguments, parser = parse_arguments()
-    destination = validate_private_destination(arguments.destination, parser)
-    initialise_workspace(destination, arguments.force)
+    try:
+        destination = validate_private_destination(arguments.destination)
+        initialise_workspace(destination, arguments.force)
+    except UnsafeWorkspacePathError:
+        parser.error("unsafe workspace path")
 
 
 if __name__ == "__main__":

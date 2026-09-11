@@ -64,6 +64,22 @@ class InitialiseWorkspaceTests(unittest.TestCase):
         result = self.run_initializer("--destination", destination)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def assert_unsafe_workspace_is_rejected(self, destination, outside_directory):
+        workspace_before = sorted(
+            str(path.relative_to(destination)) for path in destination.rglob("*")
+        )
+
+        result = self.run_initializer("--destination", destination)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsafe workspace path", result.stderr.lower())
+        self.assertNotIn(str(outside_directory.resolve()), result.stderr)
+        self.assertEqual(list(outside_directory.rglob("*")), [])
+        self.assertEqual(
+            sorted(str(path.relative_to(destination)) for path in destination.rglob("*")),
+            workspace_before,
+        )
+
     def test_creates_exact_workspace_structure_and_defaults(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             destination = pathlib.Path(temporary_directory) / "private-workspace"
@@ -236,6 +252,81 @@ class InitialiseWorkspaceTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(destination.exists())
+
+    def test_rejects_profile_symlink_without_any_filesystem_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            outside_directory = root / "outside"
+            destination.mkdir()
+            outside_directory.mkdir()
+            (destination / "profile").symlink_to(
+                outside_directory, target_is_directory=True
+            )
+
+            self.assert_unsafe_workspace_is_rejected(destination, outside_directory)
+
+    def test_rejects_filters_symlink_without_any_filesystem_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            outside_directory = root / "outside"
+            destination.mkdir()
+            outside_directory.mkdir()
+            (destination / "filters").symlink_to(
+                outside_directory, target_is_directory=True
+            )
+
+            self.assert_unsafe_workspace_is_rejected(destination, outside_directory)
+
+    def test_rejects_tracker_symlink_without_any_filesystem_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            outside_directory = root / "outside"
+            destination.mkdir()
+            outside_directory.mkdir()
+            (destination / "tracker").symlink_to(
+                outside_directory, target_is_directory=True
+            )
+
+            self.assert_unsafe_workspace_is_rejected(destination, outside_directory)
+
+    def test_rejects_jobs_symlink_without_any_filesystem_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            outside_directory = root / "outside"
+            destination.mkdir()
+            outside_directory.mkdir()
+            (destination / "jobs").symlink_to(
+                outside_directory, target_is_directory=True
+            )
+
+            self.assert_unsafe_workspace_is_rejected(destination, outside_directory)
+
+    def test_rejects_snapshots_symlink_without_any_filesystem_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            outside_directory = root / "outside"
+            (destination / "jobs").mkdir(parents=True)
+            outside_directory.mkdir()
+            (destination / "jobs" / "snapshots").symlink_to(
+                outside_directory, target_is_directory=True
+            )
+
+            self.assert_unsafe_workspace_is_rejected(destination, outside_directory)
+
+    def test_rejects_destination_symlink_without_any_filesystem_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            destination = root / "private-workspace"
+            outside_directory = root / "outside"
+            outside_directory.mkdir()
+            destination.symlink_to(outside_directory, target_is_directory=True)
+
+            self.assert_unsafe_workspace_is_rejected(destination, outside_directory)
 
     def test_public_templates_contain_no_candidate_or_contact_data(self):
         yaml_templates = (
