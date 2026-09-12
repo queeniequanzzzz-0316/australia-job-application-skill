@@ -1,0 +1,11 @@
+{
+  "canonical_job_id": "example-board-au-backend-1042",
+  "retrieved_at": "2026-09-11T07:00:54Z",
+  "last_verified_at": "2026-09-11T21:14:03+10:00",
+  "source": "example_board",
+  "canonical_url": "https://example.com/jobs/au-backend-engineer-1042",
+  "job_title": "Backend Engineer (Platform)",
+  "company": "Southern Cross Analytics Pty Ltd",
+  "location": "Melbourne VIC 3000, Australia",
+  "job_description": "## About the role\n\nSouthern Cross Analytics is a fictional Melbourne data consultancy created for\ntesting this skill. We are looking for a backend engineer to join our platform\nteam on a permanent full-time basis.\n\n## What you will do\n\n- Design and operate Python services that move data between client systems.\n- Share on-call with four other engineers during Australian business hours.\n- Pair with analysts to turn reporting questions into durable data models.\n\n## What we are looking for\n\n- Three or more years building and running production backend services.\n- Comfort with SQL and at least one cloud provider.\n- Australian work rights; we do not sponsor visas for this position.\n\n## Working here\n\nHybrid: two days per week in our Collins Street office, the rest remote.\nSalary range AUD 130,000 - 155,000 plus superannuation.\n\nApplications close once a suitable candidate is found.\n"
+}
