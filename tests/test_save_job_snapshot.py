@@ -359,7 +359,7 @@ class SaveJobSnapshotTestCase(unittest.TestCase):
             job_path = self.write_job(box, job=job, raw=raw)
         workspace_argument = box.workspace if workspace is MISSING else workspace
         result = self.run_saver(
-            "--workspace", workspace_argument, "--job", job_path, timeout=timeout
+            "--workspace", workspace_argument, "--input-json", job_path, timeout=timeout
         )
         report = self.parse_report(
             result, secrets=(*box.secrets(), str(job_path), str(workspace_argument))
@@ -1332,7 +1332,7 @@ class JobRecordRobustnessTests(SaveJobSnapshotTestCase):
                 result = self.run_saver(
                     "--workspace",
                     box.workspace,
-                    "--job",
+                    "--input-json",
                     fifo,
                     timeout=NON_REGULAR_TIMEOUT_SECONDS,
                 )
@@ -1388,7 +1388,7 @@ class JobRecordRobustnessTests(SaveJobSnapshotTestCase):
             invocations = (
                 ("no_arguments", ()),
                 ("workspace_only", ("--workspace", box.workspace)),
-                ("job_only", ("--job", job_path)),
+                ("input_json_only", ("--input-json", job_path)),
             )
 
             for label, arguments in invocations:
@@ -1405,7 +1405,7 @@ class JobRecordRobustnessTests(SaveJobSnapshotTestCase):
         with self.sandbox() as box:
             os.chmod(box.snapshots, 0o500)
             try:
-                result = self.run_saver("--workspace", box.workspace, "--job", self.write_job(box))
+                result = self.run_saver("--workspace", box.workspace, "--input-json", self.write_job(box))
                 report = self.parse_report(result, secrets=box.secrets())
 
                 self.assertEqual(result.returncode, 1)
@@ -1854,7 +1854,7 @@ class InterposedRunTests(SaveJobSnapshotTestCase):
                     str(wrapper),
                     "--workspace",
                     str(box.workspace),
-                    "--job",
+                    "--input-json",
                     str(job_path),
                 ],
                 cwd=ROOT,
@@ -2068,7 +2068,7 @@ class SnapshotFailureTests(SaveJobSnapshotTestCase):
                     str(SCRIPT),
                     "--workspace",
                     str(box.workspace),
-                    "--job",
+                    "--input-json",
                     str(job_path),
                 ],
                 cwd=ROOT,
@@ -2237,6 +2237,49 @@ class FixtureTests(SaveJobSnapshotTestCase):
                 self.snapshot_names(box),
                 [f"{record['canonical_job_id']}.md"],
             )
+
+
+class ApprovedCommandLineInterfaceTests(SaveJobSnapshotTestCase):
+    # -- The release verification in a later task invokes the script as
+    # -- `--workspace <dir> --input-json <file>`; that spelling is the contract.
+    def test_input_json_is_the_approved_record_argument(self):
+        with self.sandbox() as box:
+            job_path = self.write_job(box)
+            result = self.run_saver(
+                "--workspace", box.workspace, "--input-json", job_path
+            )
+            report = self.parse_report(
+                result, secrets=(*box.secrets(), str(job_path), str(box.workspace))
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(report["errors"], [])
+            self.assertEqual(report["status"], "created")
+            self.assertEqual(
+                report["jd_snapshot_path"],
+                f"jobs/snapshots/{VALID_JOB['canonical_job_id']}.md",
+            )
+
+    def test_input_json_is_required(self):
+        with self.sandbox() as box:
+            result = self.run_saver("--workspace", box.workspace)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+            self.assertIn("required", result.stderr.lower())
+            self.assertIn("--input-json", result.stderr)
+            self.assertNotIn("traceback", result.stderr.lower())
+
+    def test_the_superseded_job_argument_is_not_accepted(self):
+        with self.sandbox() as box:
+            job_path = self.write_job(box)
+            result = self.run_saver("--workspace", box.workspace, "--job", job_path)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+            self.assertIn("--input-json", result.stderr)
+            self.assertNotIn("traceback", result.stderr.lower())
+            self.assertEqual(self.snapshot_names(box), [])
 
 
 if __name__ == "__main__":

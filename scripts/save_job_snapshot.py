@@ -843,7 +843,7 @@ def parse_arguments():
         help="Path to the private workspace that owns the snapshot.",
     )
     parser.add_argument(
-        "--job",
+        "--input-json",
         required=True,
         type=pathlib.Path,
         help="Path to the JSON job record to snapshot.",
@@ -854,7 +854,7 @@ def parse_arguments():
 def main():
     arguments = parse_arguments()
     try:
-        exit_code = emit(build_report(arguments.workspace, arguments.job))
+        exit_code = emit(build_report(arguments.workspace, arguments.input_json))
     except Exception:
         exit_code = emit(failure_report())
     sys.exit(exit_code)
