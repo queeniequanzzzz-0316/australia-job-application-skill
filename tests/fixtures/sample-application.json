@@ -1,0 +1,16 @@
+{
+  "canonical_job_id": "example-board-au-backend-1042",
+  "occurred_at": "2026-09-12T09:30:00+10:00",
+  "event_type": "application_recorded",
+  "source": "example_board",
+  "discovery_status": "discovered",
+  "verification_status": "verified",
+  "screening_status": "screened_in",
+  "application_stage": "shortlisted",
+  "action_status": "awaiting_candidate",
+  "jd_snapshot_path": "jobs/snapshots/example-board-au-backend-1042.md",
+  "document_versions": {
+    "resume": "resumes/example-board-au-backend-1042-v1.md",
+    "cover_letter": "cover-letters/example-board-au-backend-1042-v1.md"
+  }
+}
