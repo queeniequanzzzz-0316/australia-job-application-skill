@@ -14,6 +14,15 @@ write can succeed, makes the event durable, and only then publishes the state.
 A state change that lost its event is unrecoverable; an event whose state never
 published is detectable and replayable, so that is the failure that is allowed
 to happen.
+
+Two things are pinned here that the first round got wrong.  The vocabularies
+are the approved Design Spec's, not invented ones: every retired value is fed
+back to the dimension that used to accept it and must now be refused, and the
+two extra dimensions gave up the values that collided with the approved three
+so the whole set stays pairwise disjoint.  And the funnel timestamps are
+"or later", not "exactly this stage": reaching ``offer`` stamps ``applied_at``
+and ``interview_at`` too, because an application at offer was submitted and
+interviewed whether or not anyone recorded those steps.
 """
 
 import contextlib
@@ -71,31 +80,48 @@ DESCRIPTIVE_COLUMNS = ("source", "canonical_url", "job_title", "company", "locat
 
 # -- the five dimensions, plus the event vocabulary -------------------------
 
-DISCOVERY_STATUSES = ("discovered", "duplicate", "expired", "delisted")
-VERIFICATION_STATUSES = ("unverified", "jd_retrieved", "verified", "verification_failed")
+# The two extra dimensions.  Their vocabularies were renamed where they
+# collided with the approved three: pairwise disjointness is what makes "a
+# value belonging to another dimension is refused for this one" testable, and
+# the approved three are fixed, so the collisions were resolved on this side.
+DISCOVERY_STATUSES = ("discovered", "duplicate_of_known", "expired", "delisted")
+VERIFICATION_STATUSES = (
+    "unverified",
+    "jd_retrieved",
+    "jd_verified",
+    "verification_failed",
+)
+
+# The three approved Design Spec vocabularies, exactly as approved.  They are
+# not derived, extended or reordered here: the first value of each is also the
+# value an insert records for a dimension the record left out.
 SCREENING_STATUSES = (
-    "not_screened",
-    "screened_in",
-    "screened_out",
-    "screening_needs_review",
+    "new",
+    "verified",
+    "eligible",
+    "excluded",
+    "duplicate",
+    "closed",
 )
 APPLICATION_STAGES = (
-    "identified",
+    "not_started",
     "shortlisted",
     "preparing",
     "ready",
     "submitted",
     "interview",
     "offer",
-    "unsuccessful",
-    "candidate_withdrew",
+    "accepted",
+    "rejected",
+    "withdrawn",
 )
 ACTION_STATUSES = (
     "none",
-    "awaiting_candidate",
-    "awaiting_employer",
-    "follow_up_due",
-    "closed",
+    "candidate_review",
+    "document_edit",
+    "application_form",
+    "follow_up",
+    "blocked",
 )
 EVENT_TYPES = (
     "application_recorded",
@@ -114,14 +140,40 @@ VOCABULARIES = {
     "event_type": EVENT_TYPES,
 }
 
+# Every value the earlier vocabularies carried and the approved ones do not,
+# mapped to the dimension that used to accept it.  Each must now be refused by
+# exactly that dimension, or the retired vocabulary is still in the code.
+RETIRED_VALUES = (
+    ("screening_status", "not_screened"),
+    ("screening_status", "screened_in"),
+    ("screening_status", "screened_out"),
+    ("screening_status", "screening_needs_review"),
+    ("application_stage", "identified"),
+    ("application_stage", "unsuccessful"),
+    ("application_stage", "candidate_withdrew"),
+    ("action_status", "awaiting_candidate"),
+    ("action_status", "awaiting_employer"),
+    ("action_status", "follow_up_due"),
+)
+
+# The three values the two extra dimensions had to give up, mapped to the
+# dimension that used to hold them.  ``duplicate`` and ``verified`` now belong
+# to screening_status and ``closed`` moved there too, so each of these is a
+# cross-dimension borrow and must be refused where it used to be accepted.
+RENAMED_AWAY_VALUES = (
+    ("discovery_status", "duplicate"),
+    ("verification_status", "verified"),
+    ("action_status", "closed"),
+)
+
 # One value per dimension, used to prove that a value belonging to a different
 # dimension is refused rather than quietly accepted.
 REPRESENTATIVE_VALUES = {
-    "discovery_status": "duplicate",
-    "verification_status": "verified",
-    "screening_status": "screened_in",
-    "application_stage": "submitted",
-    "action_status": "closed",
+    "discovery_status": "duplicate_of_known",
+    "verification_status": "jd_verified",
+    "screening_status": "eligible",
+    "application_stage": "accepted",
+    "action_status": "blocked",
     "event_type": "status_changed",
 }
 
@@ -133,11 +185,12 @@ STATUS_KEYS = (
     "action_status",
 )
 
-# What an insert records for a dimension the record left out.
+# What an insert records for a dimension the record left out.  application_stage
+# is absent because it is required, so an insert can never need a default.
 INITIAL_STATUS = {
     "discovery_status": "discovered",
     "verification_status": "unverified",
-    "screening_status": "not_screened",
+    "screening_status": "new",
     "action_status": "none",
 }
 
@@ -149,7 +202,59 @@ GATED_STAGES = (
     "interview",
     "offer",
 )
-UNGATED_STAGES = ("identified", "unsuccessful", "candidate_withdrew")
+UNGATED_STAGES = ("not_started", "accepted", "rejected", "withdrawn")
+
+# -- the funnel ------------------------------------------------------------
+
+# The ranked walk through the funnel.  "Reaching" a stage means reaching it or
+# any later one, so the rank is what decides which timestamp cells a stage
+# stamps.  ``rejected`` and ``withdrawn`` are terminal exits with no rank: they
+# are left out of this tuple deliberately, not forgotten.
+RANKED_STAGES = (
+    "not_started",
+    "shortlisted",
+    "preparing",
+    "ready",
+    "submitted",
+    "interview",
+    "offer",
+    "accepted",
+)
+TERMINAL_STAGES = ("rejected", "withdrawn")
+STAGE_RANK = {stage: rank for rank, stage in enumerate(RANKED_STAGES)}
+
+FUNNEL_COLUMNS = ("applied_at", "interview_at", "offer_at")
+# The stage each funnel column is first stamped at; a later stage stamps it too.
+FUNNEL_THRESHOLDS = {
+    "applied_at": "submitted",
+    "interview_at": "interview",
+    "offer_at": "offer",
+}
+
+
+def funnel_columns_reached_by(stage):
+    """The funnel columns ``stage`` stamps, because it is that stage or later."""
+    if stage not in STAGE_RANK:
+        return ()
+    return tuple(
+        column
+        for column in FUNNEL_COLUMNS
+        if STAGE_RANK[stage] >= STAGE_RANK[FUNNEL_THRESHOLDS[column]]
+    )
+
+
+def expected_funnel(walk):
+    """The three funnel cells after ``walk``, a sequence of (stage, occurred_at).
+
+    A cell takes the occurred_at of the step that first reached it and is never
+    written again, which is the whole contract in four lines.
+    """
+    cells = {column: "" for column in FUNNEL_COLUMNS}
+    for stage, occurred_at in walk:
+        for column in funnel_columns_reached_by(stage):
+            if not cells[column]:
+                cells[column] = occurred_at
+    return cells
 
 EVENT_KEYS = {
     "event_id",
@@ -195,7 +300,7 @@ VALID_RECORD = {
     "occurred_at": "2026-09-12T07:00:00Z",
     "event_type": "application_recorded",
     "source": "example_board",
-    "application_stage": "identified",
+    "application_stage": "not_started",
 }
 
 # The advertisement Task 5 turns into the snapshot Task 6 links.  Its
@@ -771,15 +876,15 @@ class ApplicationRecordContractTests(UpdateTrackerTestCase):
             with self.subTest(dimension=dimension):
                 self.assertEqual(row[dimension], initial)
                 self.assertEqual(event["to_status"][dimension], initial)
-        self.assertEqual(row["application_stage"], "identified")
-        self.assertEqual(event["to_status"]["application_stage"], "identified")
+        self.assertEqual(row["application_stage"], "not_started")
+        self.assertEqual(event["to_status"]["application_stage"], "not_started")
 
     def test_omitted_dimensions_are_unchanged_on_an_update(self):
         established = record_with(
-            discovery_status="duplicate",
-            verification_status="verified",
-            screening_status="screened_in",
-            action_status="follow_up_due",
+            discovery_status="duplicate_of_known",
+            verification_status="jd_verified",
+            screening_status="eligible",
+            action_status="follow_up",
         )
         with self.sandbox() as box:
             self.insert(box, record=established)
@@ -788,7 +893,7 @@ class ApplicationRecordContractTests(UpdateTrackerTestCase):
                 box,
                 record=record_with(
                     event_type="status_changed",
-                    application_stage="unsuccessful",
+                    application_stage="rejected",
                     occurred_at="2026-09-13T07:00:00Z",
                 ),
             )
@@ -798,11 +903,11 @@ class ApplicationRecordContractTests(UpdateTrackerTestCase):
             event = self.events(box)[-1]
 
         expected = {
-            "discovery_status": "duplicate",
-            "verification_status": "verified",
-            "screening_status": "screened_in",
-            "action_status": "follow_up_due",
-            "application_stage": "unsuccessful",
+            "discovery_status": "duplicate_of_known",
+            "verification_status": "jd_verified",
+            "screening_status": "eligible",
+            "action_status": "follow_up",
+            "application_stage": "rejected",
         }
         for dimension, value in expected.items():
             with self.subTest(dimension=dimension):
@@ -811,11 +916,11 @@ class ApplicationRecordContractTests(UpdateTrackerTestCase):
         self.assertEqual(
             event["from_status"],
             status_object(
-                "identified",
-                discovery_status="duplicate",
-                verification_status="verified",
-                screening_status="screened_in",
-                action_status="follow_up_due",
+                "not_started",
+                discovery_status="duplicate_of_known",
+                verification_status="jd_verified",
+                screening_status="eligible",
+                action_status="follow_up",
             ),
         )
 
@@ -901,16 +1006,45 @@ class StatusVocabularyTests(UpdateTrackerTestCase):
                         "dimension a status belongs to",
                     )
         # The vocabularies above are only a table until the script enforces
-        # them, so the same claim is made operationally here.
+        # them, so the same claim is made operationally here: one value, one
+        # owner.  ``eligible`` is a screening_status and nothing else, so
+        # refusing it for application_stage is what disjointness means.
         with self.sandbox() as box:
             self.update_expecting_rejection(
                 box,
                 "application_stage_invalid",
                 "application_stage",
-                record=record_with(application_stage="screened_in"),
+                record=record_with(application_stage="eligible"),
             )
 
+            report = self.update_ok(
+                box, record=record_with(screening_status="eligible")
+            )
+
+            self.assertEqual(report["status"], "created")
+            self.assertEqual(self.row_for(box)["screening_status"], "eligible")
+
     def test_a_value_from_another_dimension_is_rejected_for_this_one(self):
+        # The matrix below only means anything because each of these values is
+        # genuinely owned by the dimension it is listed under, so that is
+        # established first.  event_type is left out of this half: it is not a
+        # column of the row, only a field of the event.
+        with self.sandbox() as box:
+            for index, (owner, value) in enumerate(REPRESENTATIVE_VALUES.items()):
+                if owner == "event_type":
+                    continue
+                with self.subTest(owner=owner, value=value):
+                    self.update_ok(
+                        box,
+                        record=record_with(
+                            occurred_at=f"2026-09-12T10:{index:02d}:00Z",
+                            event_type="status_changed",
+                            **{owner: value},
+                        ),
+                    )
+
+                    self.assertEqual(self.row_for(box)[owner], value)
+
         with self.sandbox() as box:
             for dimension in VOCABULARIES:
                 for other, value in REPRESENTATIVE_VALUES.items():
@@ -942,6 +1076,88 @@ class StatusVocabularyTests(UpdateTrackerTestCase):
                             dimension,
                             record=record_with(**{dimension: value}),
                         )
+
+    def test_retired_values_are_refused_by_the_dimension_that_owned_them(self):
+        """The approved vocabularies, and the proof the retired ones are gone.
+
+        Pinning the three approved tuples here is documentation; feeding every
+        retired value back to the dimension that used to accept it is the
+        test.  A retired value that still validates means the old vocabulary
+        is still in the script, and every report written against it means
+        something different from what the Design Spec says it means.
+        """
+        self.assertEqual(
+            SCREENING_STATUSES,
+            ("new", "verified", "eligible", "excluded", "duplicate", "closed"),
+        )
+        self.assertEqual(
+            APPLICATION_STAGES,
+            (
+                "not_started",
+                "shortlisted",
+                "preparing",
+                "ready",
+                "submitted",
+                "interview",
+                "offer",
+                "accepted",
+                "rejected",
+                "withdrawn",
+            ),
+        )
+        self.assertEqual(
+            ACTION_STATUSES,
+            (
+                "none",
+                "candidate_review",
+                "document_edit",
+                "application_form",
+                "follow_up",
+                "blocked",
+            ),
+        )
+        for dimension, retired in RETIRED_VALUES:
+            with self.subTest(table=dimension, retired=retired):
+                self.assertNotIn(
+                    retired,
+                    VOCABULARIES[dimension],
+                    "a retired value is still listed in a vocabulary",
+                )
+
+        with self.sandbox() as box:
+            for dimension, retired in RETIRED_VALUES:
+                with self.subTest(dimension=dimension, retired=retired):
+                    self.update_expecting_rejection(
+                        box,
+                        f"{dimension}_invalid",
+                        dimension,
+                        record=record_with(**{dimension: retired}),
+                    )
+
+    def test_values_renamed_out_of_the_extra_dimensions_are_refused(self):
+        """The approved three own ``duplicate``, ``verified`` and ``closed``.
+
+        discovery_status and verification_status carried the first two and
+        action_status carried the third.  The approved vocabularies are fixed,
+        so the collisions were resolved on the other side, and each of these
+        is now a value belonging to a different dimension: accepting one where
+        it used to live is exactly how the dimensions stop being disjoint and
+        a status stops being attributable to a dimension at all.
+        """
+        for dimension, renamed in RENAMED_AWAY_VALUES:
+            with self.subTest(table=dimension, value=renamed):
+                self.assertIn(renamed, SCREENING_STATUSES)
+                self.assertNotIn(renamed, VOCABULARIES[dimension])
+
+        with self.sandbox() as box:
+            for dimension, renamed in RENAMED_AWAY_VALUES:
+                with self.subTest(dimension=dimension, value=renamed):
+                    self.update_expecting_rejection(
+                        box,
+                        f"{dimension}_invalid",
+                        dimension,
+                        record=record_with(**{dimension: renamed}),
+                    )
 
     def assert_dimension_accepts_every_value(self, box, dimension, values):
         for index, value in enumerate(values):
@@ -1031,6 +1247,45 @@ class SnapshotGateTests(UpdateTrackerTestCase):
     shortlisting onward requires one; the early lifecycle and the two exits do
     not, so a role can be recorded and abandoned without inventing evidence."""
 
+    def test_the_gate_partitions_the_ten_stages_into_six_gated_and_four_ungated(self):
+        """Exactly six stages need evidence; the four the funnel does not run
+        through do not, so a role can be recorded, rejected or abandoned
+        without a snapshot being invented for it."""
+        self.assertEqual(len(APPLICATION_STAGES), 10)
+        self.assertEqual(
+            GATED_STAGES,
+            ("shortlisted", "preparing", "ready", "submitted", "interview", "offer"),
+        )
+        self.assertEqual(
+            UNGATED_STAGES, ("not_started", "accepted", "rejected", "withdrawn")
+        )
+        self.assertEqual(
+            set(GATED_STAGES) & set(UNGATED_STAGES),
+            set(),
+            "a stage cannot be both gated and ungated",
+        )
+        self.assertEqual(
+            set(GATED_STAGES) | set(UNGATED_STAGES),
+            set(APPLICATION_STAGES),
+            "every approved stage must fall on one side of the gate",
+        )
+        # The partition above is only a table until the script enforces it.
+        with self.sandbox() as box:
+            self.update_expecting_rejection(
+                box,
+                "jd_snapshot_required",
+                "jd_snapshot_path",
+                record=record_with(application_stage="offer"),
+            )
+
+        with self.sandbox() as box:
+            report = self.update_ok(
+                box, record=record_with(application_stage="accepted")
+            )
+
+            self.assertEqual(report["status"], "created")
+            self.assertIsNone(report["jd_snapshot_path"])
+
     def test_gated_stages_are_refused_without_a_snapshot(self):
         with self.sandbox() as box:
             for stage in GATED_STAGES:
@@ -1059,7 +1314,7 @@ class SnapshotGateTests(UpdateTrackerTestCase):
     def test_an_early_lifecycle_insert_needs_no_snapshot(self):
         with self.sandbox() as box:
             report = self.update_ok(
-                box, record=record_with(application_stage="identified")
+                box, record=record_with(application_stage="not_started")
             )
 
             self.assertEqual(report["status"], "created")
@@ -1116,6 +1371,347 @@ class SnapshotGateTests(UpdateTrackerTestCase):
 
             self.assertEqual(report["status"], "updated")
             self.assertEqual(self.row_for(box)["jd_snapshot_path"], snapshot_path)
+
+
+class FunnelTimestampTests(UpdateTrackerTestCase):
+    """The four timestamp cells, and the one rule that governs all of them.
+
+    ``first_seen_at`` is stamped when the row is inserted.  ``applied_at``,
+    ``interview_at`` and ``offer_at`` are stamped when the row first reaches
+    ``submitted``, ``interview`` or ``offer`` *or any later stage*: an
+    application that is at ``offer`` has been submitted and interviewed
+    whether or not anyone recorded those steps, so a jump straight to ``offer``
+    stamps all three at that one instant.  Every cell takes the ``occurred_at``
+    of the step that first reached it and is never written again, because the
+    funnel is a record of when things happened, not of when they were typed in.
+
+    ``rejected`` and ``withdrawn`` are exits, not stages of the funnel: they
+    have no rank, so they conjure no timestamp out of nothing and erase none
+    of the ones already there.
+    """
+
+    def funnel_cells(self, box, canonical_job_id="job-1"):
+        row = self.row_for(box, canonical_job_id)
+        return {column: row[column] for column in FUNNEL_COLUMNS}
+
+    def assert_funnel(self, box, walk, canonical_job_id="job-1"):
+        self.assertEqual(
+            self.funnel_cells(box, canonical_job_id),
+            expected_funnel(walk),
+            f"the funnel cells do not match the walk {walk!r}",
+        )
+
+    # -- first_seen_at -----------------------------------------------------
+
+    def test_first_seen_at_is_stamped_from_the_inserting_records_occurred_at(self):
+        with self.sandbox() as box:
+            self.insert(box, record=record_with(occurred_at="2026-09-12T04:05:06+10:00"))
+
+            row = self.row_for(box)
+
+        self.assertEqual(row["first_seen_at"], "2026-09-12T04:05:06+10:00")
+        for column in FUNNEL_COLUMNS:
+            with self.subTest(column=column):
+                self.assertEqual(
+                    row[column],
+                    "",
+                    "an insert at not_started has reached no part of the funnel",
+                )
+
+    def test_first_seen_at_survives_many_later_updates(self):
+        walk = (
+            "shortlisted",
+            "preparing",
+            "ready",
+            "submitted",
+            "interview",
+            "offer",
+            "accepted",
+            "withdrawn",
+        )
+        with self.sandbox() as box:
+            snapshot_path = self.link_snapshot(box)
+            self.insert(box, record=record_with(occurred_at="2026-09-12T01:00:00Z"))
+            first_seen_at = self.row_for(box)["first_seen_at"].encode("utf-8")
+            self.assertEqual(first_seen_at, b"2026-09-12T01:00:00Z")
+
+            for index, stage in enumerate(walk):
+                with self.subTest(application_stage=stage):
+                    self.update_ok(
+                        box,
+                        record=record_with(
+                            event_type="status_changed",
+                            application_stage=stage,
+                            jd_snapshot_path=snapshot_path,
+                            occurred_at=f"2026-09-{13 + index:02d}T07:00:00Z",
+                        ),
+                    )
+
+                    self.assertEqual(
+                        self.row_for(box)["first_seen_at"].encode("utf-8"),
+                        first_seen_at,
+                        "first_seen_at was overwritten by a later update",
+                    )
+
+    # -- the funnel proper -------------------------------------------------
+
+    def test_the_ordinary_walk_stamps_each_funnel_cell_when_it_is_first_reached(self):
+        walk = tuple(
+            (stage, f"2026-09-12T{index + 1:02d}:00:00Z")
+            for index, stage in enumerate(RANKED_STAGES)
+        )
+        with self.sandbox() as box:
+            snapshot_path = self.link_snapshot(box)
+            first_stage, first_occurred_at = walk[0]
+            self.insert(
+                box,
+                record=record_with(
+                    application_stage=first_stage,
+                    occurred_at=first_occurred_at,
+                    jd_snapshot_path=snapshot_path,
+                ),
+            )
+            self.assert_funnel(box, walk[:1])
+
+            for index, (stage, occurred_at) in enumerate(walk[1:], start=1):
+                with self.subTest(application_stage=stage):
+                    report = self.update_ok(
+                        box,
+                        record=record_with(
+                            event_type="status_changed",
+                            application_stage=stage,
+                            occurred_at=occurred_at,
+                        ),
+                    )
+
+                    self.assertEqual(report["status"], "updated")
+                    self.assert_funnel(box, walk[: index + 1])
+
+            row = self.row_for(box)
+
+        self.assertEqual(row["first_seen_at"], "2026-09-12T01:00:00Z")
+        self.assertEqual(row["applied_at"], "2026-09-12T05:00:00Z")
+        self.assertEqual(row["interview_at"], "2026-09-12T06:00:00Z")
+        self.assertEqual(row["offer_at"], "2026-09-12T07:00:00Z")
+
+    def test_reaching_a_stage_stamps_every_funnel_column_it_passed(self):
+        """One fresh job per stage, inserted straight at that stage.
+
+        This is the "or later" rule stated as a table: the columns a stage
+        stamps are exactly the ones whose own stage it has reached or passed,
+        and the two rankless exits stamp nothing at all.
+        """
+        with self.sandbox() as box:
+            for index, stage in enumerate((*RANKED_STAGES, *TERMINAL_STAGES)):
+                with self.subTest(application_stage=stage):
+                    canonical_job_id = f"job-{stage}"
+                    snapshot_path = self.save_snapshot(
+                        box,
+                        job=job_with(canonical_job_id=canonical_job_id),
+                        name=f"{canonical_job_id}.json",
+                    )
+                    occurred_at = f"2026-09-12T{index:02d}:30:00Z"
+
+                    self.insert(
+                        box,
+                        record=record_with(
+                            canonical_job_id=canonical_job_id,
+                            application_stage=stage,
+                            occurred_at=occurred_at,
+                            jd_snapshot_path=snapshot_path,
+                        ),
+                    )
+
+                    row = self.row_for(box, canonical_job_id)
+                    self.assertEqual(row["first_seen_at"], occurred_at)
+                    reached = funnel_columns_reached_by(stage)
+                    for column in FUNNEL_COLUMNS:
+                        self.assertEqual(
+                            row[column],
+                            occurred_at if column in reached else "",
+                            f"{stage} stamped {column} wrongly",
+                        )
+
+    def test_a_jump_straight_to_offer_stamps_applied_interview_and_offer(self):
+        with self.sandbox() as box:
+            snapshot_path = self.link_snapshot(box)
+            self.insert(box, record=record_with(occurred_at="2026-09-12T01:00:00Z"))
+            self.assert_funnel(box, (("not_started", "2026-09-12T01:00:00Z"),))
+
+            self.update_ok(
+                box,
+                record=record_with(
+                    event_type="status_changed",
+                    application_stage="offer",
+                    jd_snapshot_path=snapshot_path,
+                    occurred_at="2026-09-13T02:00:00Z",
+                ),
+            )
+
+            row = self.row_for(box)
+
+        self.assertEqual(row["first_seen_at"], "2026-09-12T01:00:00Z")
+        for column in FUNNEL_COLUMNS:
+            with self.subTest(column=column):
+                self.assertEqual(
+                    row[column],
+                    "2026-09-13T02:00:00Z",
+                    "a row at offer has been submitted and interviewed, so all "
+                    "three cells are stamped at the instant it got there",
+                )
+
+    def test_a_jump_straight_to_accepted_stamps_all_three_funnel_columns(self):
+        with self.sandbox() as box:
+            self.insert(box, record=record_with(occurred_at="2026-09-12T01:00:00Z"))
+
+            self.update_ok(
+                box,
+                record=record_with(
+                    event_type="status_changed",
+                    application_stage="accepted",
+                    occurred_at="2026-09-14T03:00:00Z",
+                ),
+            )
+
+            row = self.row_for(box)
+
+        self.assertEqual(row["first_seen_at"], "2026-09-12T01:00:00Z")
+        for column in FUNNEL_COLUMNS:
+            with self.subTest(column=column):
+                self.assertEqual(row[column], "2026-09-14T03:00:00Z")
+
+    def test_existing_funnel_timestamps_are_never_overwritten(self):
+        later_runs = (
+            ("offer", "follow_up", "2026-09-15T04:00:00Z"),
+            ("offer", "blocked", "2026-09-16T05:00:00Z"),
+            ("accepted", "none", "2026-09-17T06:00:00Z"),
+        )
+        with self.sandbox() as box:
+            snapshot_path = self.link_snapshot(box)
+            self.insert(
+                box,
+                record=record_with(
+                    application_stage="submitted",
+                    jd_snapshot_path=snapshot_path,
+                    occurred_at="2026-09-12T01:00:00Z",
+                ),
+            )
+            for stage, occurred_at in (
+                ("interview", "2026-09-13T02:00:00Z"),
+                ("offer", "2026-09-14T03:00:00Z"),
+            ):
+                self.update_ok(
+                    box,
+                    record=record_with(
+                        event_type="status_changed",
+                        application_stage=stage,
+                        occurred_at=occurred_at,
+                    ),
+                )
+
+            established = {
+                column: self.row_for(box)[column]
+                for column in ("first_seen_at", *FUNNEL_COLUMNS)
+            }
+            self.assertEqual(
+                established,
+                {
+                    "first_seen_at": "2026-09-12T01:00:00Z",
+                    "applied_at": "2026-09-12T01:00:00Z",
+                    "interview_at": "2026-09-13T02:00:00Z",
+                    "offer_at": "2026-09-14T03:00:00Z",
+                },
+            )
+
+            for stage, action_status, occurred_at in later_runs:
+                with self.subTest(occurred_at=occurred_at):
+                    self.update_ok(
+                        box,
+                        record=record_with(
+                            event_type="status_changed",
+                            application_stage=stage,
+                            action_status=action_status,
+                            occurred_at=occurred_at,
+                        ),
+                    )
+
+                    row = self.row_for(box)
+                    for column, value in established.items():
+                        self.assertEqual(
+                            row[column].encode("utf-8"),
+                            value.encode("utf-8"),
+                            f"{column} was rewritten by a later update carrying a "
+                            "different occurred_at",
+                        )
+
+    # -- the two exits -----------------------------------------------------
+
+    def test_rejected_from_an_early_stage_conjures_no_funnel_timestamps(self):
+        with self.sandbox() as box:
+            self.insert(box, record=record_with(occurred_at="2026-09-12T01:00:00Z"))
+
+            self.update_ok(
+                box,
+                record=record_with(
+                    event_type="status_changed",
+                    application_stage="rejected",
+                    occurred_at="2026-09-13T02:00:00Z",
+                ),
+            )
+
+            row = self.row_for(box)
+
+        self.assertEqual(row["first_seen_at"], "2026-09-12T01:00:00Z")
+        self.assertEqual(row["application_stage"], "rejected")
+        for column in FUNNEL_COLUMNS:
+            with self.subTest(column=column):
+                self.assertEqual(
+                    row[column],
+                    "",
+                    "a role rejected before it was ever submitted has no funnel "
+                    "timestamps to invent",
+                )
+
+    def test_withdrawn_after_interview_keeps_what_was_reached_and_invents_nothing(self):
+        with self.sandbox() as box:
+            snapshot_path = self.link_snapshot(box)
+            self.insert(
+                box,
+                record=record_with(
+                    application_stage="submitted",
+                    jd_snapshot_path=snapshot_path,
+                    occurred_at="2026-09-12T01:00:00Z",
+                ),
+            )
+            self.update_ok(
+                box,
+                record=record_with(
+                    event_type="status_changed",
+                    application_stage="interview",
+                    occurred_at="2026-09-13T02:00:00Z",
+                ),
+            )
+
+            self.update_ok(
+                box,
+                record=record_with(
+                    event_type="status_changed",
+                    application_stage="withdrawn",
+                    occurred_at="2026-09-14T03:00:00Z",
+                ),
+            )
+
+            row = self.row_for(box)
+
+        self.assertEqual(row["application_stage"], "withdrawn")
+        self.assertEqual(row["first_seen_at"], "2026-09-12T01:00:00Z")
+        self.assertEqual(row["applied_at"], "2026-09-12T01:00:00Z")
+        self.assertEqual(row["interview_at"], "2026-09-13T02:00:00Z")
+        self.assertEqual(
+            row["offer_at"],
+            "",
+            "withdrawing is not reaching an offer",
+        )
 
 
 def split_snapshot(text):
@@ -1540,7 +2136,7 @@ class ApplicationsCsvTests(UpdateTrackerTestCase):
         with self.sandbox() as box:
             self.insert(box)
 
-            for index, stage in enumerate(("unsuccessful", "identified")):
+            for index, stage in enumerate(("rejected", "not_started")):
                 report = self.update_ok(
                     box,
                     record=record_with(
@@ -1564,7 +2160,7 @@ class ApplicationsCsvTests(UpdateTrackerTestCase):
                 record=record_with(
                     canonical_job_id="job-a",
                     event_type="status_changed",
-                    application_stage="unsuccessful",
+                    application_stage="rejected",
                     occurred_at="2026-09-13T07:00:00Z",
                 ),
             )
@@ -1600,7 +2196,7 @@ class ApplicationsCsvTests(UpdateTrackerTestCase):
                 "canonical_job_id",
                 record=record_with(
                     event_type="status_changed",
-                    application_stage="unsuccessful",
+                    application_stage="rejected",
                     occurred_at="2026-09-13T07:00:00Z",
                 ),
             )
@@ -1642,7 +2238,7 @@ class ApplicationsCsvTests(UpdateTrackerTestCase):
                 record=record_with(
                     source="another_board",
                     event_type="status_changed",
-                    application_stage="unsuccessful",
+                    application_stage="rejected",
                     occurred_at="2026-09-13T07:00:00Z",
                 ),
             )
@@ -1674,7 +2270,7 @@ class ApplicationsCsvTests(UpdateTrackerTestCase):
                 box,
                 record=record_with(
                     event_type="status_changed",
-                    application_stage="unsuccessful",
+                    application_stage="rejected",
                     occurred_at="2026-09-13T07:00:00Z",
                 ),
             )
@@ -1698,7 +2294,7 @@ class ApplicationsCsvTests(UpdateTrackerTestCase):
                 box,
                 record=record_with(
                     event_type="status_changed",
-                    application_stage="unsuccessful",
+                    application_stage="rejected",
                     occurred_at="2026-09-13T07:00:00Z",
                 ),
             )
@@ -1737,7 +2333,7 @@ class EventLogTests(UpdateTrackerTestCase):
                 box,
                 record=record_with(
                     event_type="status_changed",
-                    application_stage="unsuccessful",
+                    application_stage="rejected",
                     occurred_at="2026-09-13T07:00:00Z",
                 ),
             )
@@ -1765,7 +2361,7 @@ class EventLogTests(UpdateTrackerTestCase):
 
             event = self.events(box)[0]
             self.assertIsNone(event["from_status"])
-            self.assertEqual(event["to_status"], status_object("identified"))
+            self.assertEqual(event["to_status"], status_object("not_started"))
 
     def test_from_status_carries_the_previous_five_dimensions(self):
         with self.sandbox() as box:
@@ -1775,17 +2371,17 @@ class EventLogTests(UpdateTrackerTestCase):
                 box,
                 record=record_with(
                     event_type="status_changed",
-                    application_stage="unsuccessful",
-                    action_status="closed",
+                    application_stage="rejected",
+                    action_status="blocked",
                     occurred_at="2026-09-13T07:00:00Z",
                 ),
             )
 
             event = self.events(box)[-1]
-            self.assertEqual(event["from_status"], status_object("identified"))
+            self.assertEqual(event["from_status"], status_object("not_started"))
             self.assertEqual(
                 event["to_status"],
-                status_object("unsuccessful", action_status="closed"),
+                status_object("rejected", action_status="blocked"),
             )
 
     def test_event_ids_are_unique_across_jobs_and_runs(self):
@@ -1804,7 +2400,7 @@ class EventLogTests(UpdateTrackerTestCase):
                     record=record_with(
                         canonical_job_id=job_id,
                         event_type="status_changed",
-                        application_stage="unsuccessful",
+                        application_stage="rejected",
                         occurred_at=f"2026-09-13T07:0{index}:00Z",
                     ),
                 )
@@ -1820,7 +2416,7 @@ class EventLogTests(UpdateTrackerTestCase):
             before = box.events_jsonl.read_bytes()
             inode = box.events_jsonl.stat().st_ino
 
-            for index, stage in enumerate(("unsuccessful", "identified")):
+            for index, stage in enumerate(("rejected", "not_started")):
                 self.update_ok(
                     box,
                     record=record_with(
@@ -1853,7 +2449,7 @@ class EventLogTests(UpdateTrackerTestCase):
                 box,
                 "application_stage_invalid",
                 "application_stage",
-                record=record_with(application_stage="screened_out"),
+                record=record_with(application_stage="excluded"),
             )
 
             self.assertEqual(box.events_jsonl.read_bytes(), before)
@@ -1956,15 +2552,28 @@ os.replace = refuse_to_publish
 os.rename = refuse_to_publish
 '''
 
+FAIL_THE_EVENT_APPEND_HOOK = '''\
+_open_a_file = os.open
+
+
+def refuse_the_event_append(path, flags, *arguments, **keywords):
+    if str(path).endswith("events.jsonl"):
+        raise OSError("the tracker event append was interrupted")
+    return _open_a_file(path, flags, *arguments, **keywords)
+
+
+os.open = refuse_the_event_append
+'''
+
 CHANGED_RECORD = record_with(
     event_type="status_changed",
-    application_stage="unsuccessful",
+    application_stage="rejected",
     occurred_at="2026-09-13T07:00:00Z",
 )
 
 SECOND_CHANGE_RECORD = record_with(
     event_type="status_changed",
-    application_stage="candidate_withdrew",
+    application_stage="withdrawn",
     occurred_at="2026-09-14T07:00:00Z",
 )
 
@@ -2079,10 +2688,202 @@ class TransactionBoundaryTests(UpdateTrackerTestCase):
             self.assertNotEqual(report["errors"], [])
             self.assertEqual(
                 self.row_for(box)["application_stage"],
-                "identified",
+                "not_started",
                 "a run that wrote only one of the two files must never report the "
                 "new state as published",
             )
+
+
+    @unittest.skipIf(RUNNING_AS_ROOT, "root bypasses file permissions")
+    def test_a_failed_event_append_publishes_nothing_and_claims_no_event(self):
+        """The failure the whole ordering exists to survive.
+
+        The replacement CSV has already been written and fsynced when the
+        append fails, so this is the moment the run is holding a complete new
+        state it must throw away: the event is what makes a change replayable,
+        and a state published without one is unrecoverable.  Both files must
+        be byte-identical afterwards and nothing may be left in the tracker
+        directory -- and because the two files never diverged, the next
+        ordinary run must succeed rather than be blocked by the precheck.
+        """
+        with self.sandbox() as box:
+            self.insert(box)
+            applications = box.applications_csv.read_bytes()
+            events = box.events_jsonl.read_bytes()
+            self.pin_mtime(box.applications_csv)
+            self.pin_mtime(box.events_jsonl)
+            record_path = self.write_record(box, record=CHANGED_RECORD)
+            os.chmod(box.events_jsonl, 0o400)
+            try:
+                result, report = self.update(box, record_path=record_path)
+
+                self.assertEqual(result.returncode, 1)
+                self.assert_rejected(
+                    result, report, "tracker_event_write_failed", None
+                )
+                self.assertFalse(
+                    report["event_recorded"],
+                    "no event landed, so the report must not claim one",
+                )
+                self.assertIsNone(report["event_id"])
+                self.assert_untouched(box.applications_csv, applications)
+                self.assert_untouched(box.events_jsonl, events)
+                self.assertEqual(
+                    sorted(path.name for path in box.tracker.iterdir()),
+                    ["applications.csv", "events.jsonl"],
+                    "the staged temporary file must not be left behind",
+                )
+            finally:
+                os.chmod(box.events_jsonl, 0o600)
+
+            report = self.update_ok(box, record=CHANGED_RECORD)
+
+            self.assertEqual(
+                report["status"],
+                "updated",
+                "the two files never diverged, so the precheck must not block the "
+                "next ordinary run",
+            )
+            self.assertTrue(report["event_recorded"])
+            self.assertEqual(len(self.events(box)), 2)
+            self.assertEqual(self.row_for(box)["application_stage"], "rejected")
+
+    def test_an_interrupted_event_append_leaves_the_tracker_exactly_as_it_was(self):
+        """The same failure reached by interposing on the append rather than by
+        file permissions, so it stays pinned where permissions do not bite."""
+        with self.sandbox() as box:
+            self.insert(box)
+            applications = box.applications_csv.read_bytes()
+            events = box.events_jsonl.read_bytes()
+            self.pin_mtime(box.applications_csv)
+            self.pin_mtime(box.events_jsonl)
+
+            result, report = self.run_interposed(
+                box, FAIL_THE_EVENT_APPEND_HOOK, record=CHANGED_RECORD
+            )
+
+            self.assert_rejected(result, report, "tracker_event_write_failed", None)
+            self.assertFalse(report["event_recorded"])
+            self.assertIsNone(report["event_id"])
+            self.assert_untouched(box.applications_csv, applications)
+            self.assert_untouched(box.events_jsonl, events)
+            self.assertEqual(
+                sorted(path.name for path in box.tracker.iterdir()),
+                ["applications.csv", "events.jsonl"],
+                "the staged temporary file must not be left behind",
+            )
+
+
+    def test_an_unencodable_record_is_reported_rather_than_crashing_the_run(self):
+        """The last-resort arm of the two-file write.
+
+        ``json.loads`` accepts an escaped lone surrogate; encoding the event
+        line that would carry it does not, and a UnicodeEncodeError is not an
+        OSError, so it escapes every diagnostic the write path names and lands
+        in the guard around the whole run.  The staged CSV replacement has
+        already been written by then, so this is the same "throw the new state
+        away" obligation as a failed append: one JSON report on stdout, exit 1,
+        no event claimed, nothing left in the tracker directory, and both
+        files byte-identical.
+        """
+        unencodable = (
+            '{"canonical_job_id": "job-1", "occurred_at": "2026-09-13T07:00:00Z",'
+            ' "event_type": "status_changed", "source": "\\ud800",'
+            ' "application_stage": "rejected"}'
+        )
+        with self.sandbox() as box:
+            self.insert(box)
+            applications = box.applications_csv.read_bytes()
+            events = box.events_jsonl.read_bytes()
+            self.pin_mtime(box.applications_csv)
+            self.pin_mtime(box.events_jsonl)
+
+            result, report = self.update(box, raw=unencodable)
+
+            self.assert_rejected(
+                result, report, "tracker_update_failed", "application"
+            )
+            self.assertFalse(report["event_recorded"])
+            self.assertIsNone(report["event_id"])
+            self.assert_untouched(box.applications_csv, applications)
+            self.assert_untouched(box.events_jsonl, events)
+            self.assertEqual(
+                sorted(path.name for path in box.tracker.iterdir()),
+                ["applications.csv", "events.jsonl"],
+                "the staged temporary file must not be left behind",
+            )
+
+
+class TrackerReadabilityTests(UpdateTrackerTestCase):
+    """A tracker file this skill cannot read as it writes them stops the run.
+
+    The read is bounded and typed before it happens, because an unbounded read
+    of whatever is on disk can be killed for memory and a killed process
+    prints no report at all.  Every one of these refusals happens in the
+    precheck, before a single byte is planned, so both files must survive
+    untouched.
+    """
+
+    OVERSIZE_BYTES = 4 * 1024 * 1024 + 1
+
+    @unittest.skipIf(RUNNING_AS_ROOT, "root bypasses file permissions")
+    def test_an_unreadable_event_log_is_refused(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            os.chmod(box.events_jsonl, 0o000)
+            try:
+                self.update_expecting_rejection(
+                    box, "tracker_unreadable", "tracker", record=CHANGED_RECORD
+                )
+            finally:
+                os.chmod(box.events_jsonl, 0o600)
+
+    @unittest.skipIf(RUNNING_AS_ROOT, "root bypasses file permissions")
+    def test_an_unreadable_applications_csv_is_refused(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            os.chmod(box.applications_csv, 0o000)
+            try:
+                self.update_expecting_rejection(
+                    box, "tracker_unreadable", "tracker", record=CHANGED_RECORD
+                )
+            finally:
+                os.chmod(box.applications_csv, 0o600)
+
+    def test_an_oversize_event_log_is_refused_rather_than_read(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            padding = self.OVERSIZE_BYTES - box.events_jsonl.stat().st_size
+            self.assertGreater(padding, 0)
+            with box.events_jsonl.open("a", encoding="utf-8") as handle:
+                handle.write("\n" * padding)
+            self.assertEqual(box.events_jsonl.stat().st_size, self.OVERSIZE_BYTES)
+
+            self.update_expecting_rejection(
+                box, "tracker_unreadable", "tracker", record=CHANGED_RECORD
+            )
+
+    def test_an_event_log_line_that_is_not_an_event_is_refused(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            for label, line in (
+                ("not_json", "this line is not an event\n"),
+                ("json_scalar", "7\n"),
+                ("json_list", '["job-1"]\n'),
+            ):
+                with self.subTest(line=label):
+                    original = box.events_jsonl.read_bytes()
+                    with box.events_jsonl.open("a", encoding="utf-8") as handle:
+                        handle.write(line)
+                    try:
+                        self.update_expecting_rejection(
+                            box,
+                            "tracker_unreadable",
+                            "tracker",
+                            record=CHANGED_RECORD,
+                        )
+                    finally:
+                        box.events_jsonl.write_bytes(original)
 
 
 def raw_with_duplicate_key(field, first, second):
@@ -2211,7 +3012,7 @@ class RecordRobustnessTests(UpdateTrackerTestCase):
                 "application_stage_invalid",
                 "application_stage",
                 raw=raw_with_duplicate_key(
-                    "application_stage", "identified", "not_a_stage"
+                    "application_stage", "not_started", "not_a_stage"
                 ),
             )
 
@@ -2219,12 +3020,12 @@ class RecordRobustnessTests(UpdateTrackerTestCase):
             report = self.update_ok(
                 box,
                 raw=raw_with_duplicate_key(
-                    "application_stage", "not_a_stage", "identified"
+                    "application_stage", "not_a_stage", "not_started"
                 ),
             )
 
             self.assertEqual(report["status"], "created")
-            self.assertEqual(self.row_for(box)["application_stage"], "identified")
+            self.assertEqual(self.row_for(box)["application_stage"], "not_started")
 
 
 class FixtureTests(UpdateTrackerTestCase):
@@ -2245,6 +3046,15 @@ class FixtureTests(UpdateTrackerTestCase):
             job["canonical_job_id"],
             "the two fixtures must describe the same job so they compose",
         )
+        for dimension, vocabulary in VOCABULARIES.items():
+            if dimension in record:
+                with self.subTest(dimension=dimension):
+                    self.assertIn(
+                        record[dimension],
+                        vocabulary,
+                        "the fixture must spell this dimension with the approved "
+                        "vocabulary, not a retired value",
+                    )
         self.assertIn(record["application_stage"], APPLICATION_STAGES)
         self.assertIn(record["event_type"], EVENT_TYPES)
         self.assertEqual(

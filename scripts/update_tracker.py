@@ -9,14 +9,25 @@ discovery_status, verification_status, screening_status, application_stage and
 action_status -- each keep their own closed, pairwise-disjoint vocabulary,
 their own column, their own ``*_invalid`` code and their own key inside every
 event's from_status/to_status.  A value belonging to another dimension is
-refused, because accepting it is exactly how five dimensions become one.
+refused, because accepting it is exactly how five dimensions become one.  The
+vocabularies are the approved Design Spec's; discovery_status and
+verification_status are spelled so that they do not collide with them, because
+disjointness is what makes a status attributable to a dimension at all.
 
 A JD snapshot is the evidence that a role was really read, so every stage from
-shortlisting onward is gated on a linked snapshot; the early lifecycle and the
-two exits are not, and a role can be recorded and abandoned without inventing
-evidence.  The snapshot path Task 5 reported is stored verbatim: a regenerated
-or normalised path can drift from the archived bytes it is supposed to cite, so
-a non-canonical spelling of a real snapshot is refused rather than repaired.
+shortlisting through offer is gated on a linked snapshot; not_started,
+accepted and the two exits are not, and a role can be recorded and abandoned
+without inventing evidence.  The snapshot path Task 5 reported is stored
+verbatim: a regenerated or normalised path can drift from the archived bytes it
+is supposed to cite, so a non-canonical spelling of a real snapshot is refused
+rather than repaired.
+
+The funnel timestamps record when a row reached a stage *or any later one*: an
+application at offer has been submitted and interviewed whether or not anyone
+recorded those steps, so a jump straight to offer stamps applied_at,
+interview_at and offer_at at that one instant.  A cell keeps the occurred_at of
+the step that first reached it and is never written again, and the two exits
+have no rank at all, so they invent no timestamp and erase none.
 
 The run touches two files, so it cannot be atomic and the order is what makes
 the surviving failure the recoverable one:
@@ -61,40 +72,53 @@ from initialise_workspace import (  # noqa: E402
 
 # -- the vocabularies -------------------------------------------------------
 
+# The walk through the funnel, in order, and the two exits that stand outside
+# it.  This is the single source for the stage vocabulary, for the ranking that
+# decides which timestamps a stage stamps, and for the snapshot gate: a stage
+# added to the vocabulary without a rank has to be added to TERMINAL_STAGES
+# deliberately, which is the point.
+RANKED_STAGES = (
+    "not_started",
+    "shortlisted",
+    "preparing",
+    "ready",
+    "submitted",
+    "interview",
+    "offer",
+    "accepted",
+)
+TERMINAL_STAGES = ("rejected", "withdrawn")
+APPLICATION_STAGES = (*RANKED_STAGES, *TERMINAL_STAGES)
+
 # The one place a dimension is declared: its name, its column position and its
 # closed vocabulary.  Every other table below is derived from it, so a new
-# dimension cannot be added here and forgotten somewhere else.
+# dimension cannot be added here and forgotten somewhere else.  The
+# vocabularies are pairwise disjoint, so no value can be read as belonging to
+# two dimensions.
 STATUS_DIMENSIONS = {
-    "discovery_status": ("discovered", "duplicate", "expired", "delisted"),
+    "discovery_status": ("discovered", "duplicate_of_known", "expired", "delisted"),
     "verification_status": (
         "unverified",
         "jd_retrieved",
-        "verified",
+        "jd_verified",
         "verification_failed",
     ),
     "screening_status": (
-        "not_screened",
-        "screened_in",
-        "screened_out",
-        "screening_needs_review",
+        "new",
+        "verified",
+        "eligible",
+        "excluded",
+        "duplicate",
+        "closed",
     ),
-    "application_stage": (
-        "identified",
-        "shortlisted",
-        "preparing",
-        "ready",
-        "submitted",
-        "interview",
-        "offer",
-        "unsuccessful",
-        "candidate_withdrew",
-    ),
+    "application_stage": APPLICATION_STAGES,
     "action_status": (
         "none",
-        "awaiting_candidate",
-        "awaiting_employer",
-        "follow_up_due",
-        "closed",
+        "candidate_review",
+        "document_edit",
+        "application_form",
+        "follow_up",
+        "blocked",
     ),
 }
 STATUS_KEYS = tuple(STATUS_DIMENSIONS)
@@ -125,15 +149,32 @@ INITIAL_STATUS = {
     if dimension != STAGE_FIELD
 }
 
+# A stage is ranked by where it sits in the funnel; the two exits are absent
+# from the table, so ``STAGE_RANK.get`` answers "no rank" for them.
+STAGE_RANK = {stage: rank for rank, stage in enumerate(RANKED_STAGES)}
+
+# Evidence is required from the first stage that claims a role was read to the
+# last one before the outcome; the ends are named once and the span derived, so
+# a stage inserted between them is gated without this table being touched.
+GATE_FIRST_STAGE = "shortlisted"
+GATE_LAST_STAGE = "offer"
 GATED_STAGES = frozenset(
-    ("shortlisted", "preparing", "ready", "submitted", "interview", "offer")
+    stage
+    for stage, rank in STAGE_RANK.items()
+    if STAGE_RANK[GATE_FIRST_STAGE] <= rank <= STAGE_RANK[GATE_LAST_STAGE]
 )
 
-# Reaching a stage stamps the column that records when it was reached.
-STAGE_TIMESTAMP_COLUMNS = {
-    "submitted": "applied_at",
-    "interview": "interview_at",
-    "offer": "offer_at",
+# The funnel columns, each named by the stage that first stamps it.  A row that
+# reaches a later ranked stage stamps it too, so the threshold is a rank
+# comparison rather than a per-stage list of columns.
+FUNNEL_THRESHOLD_STAGES = {
+    "applied_at": "submitted",
+    "interview_at": "interview",
+    "offer_at": "offer",
+}
+FUNNEL_COLUMNS = tuple(FUNNEL_THRESHOLD_STAGES)
+FUNNEL_THRESHOLD_RANKS = {
+    column: STAGE_RANK[stage] for column, stage in FUNNEL_THRESHOLD_STAGES.items()
 }
 
 
@@ -173,9 +214,7 @@ APPLICATION_HEADER = (
     *STATUS_KEYS,
     "first_seen_at",
     "last_verified_at",
-    "applied_at",
-    "interview_at",
-    "offer_at",
+    *FUNNEL_COLUMNS,
 )
 
 TRACKER_DIRECTORY = "tracker"
@@ -787,6 +826,23 @@ def next_snapshot_path(record, state):
     return state.snapshot_path if linked is None else linked
 
 
+def funnel_columns_reached_by(stage):
+    """The funnel columns ``stage`` stamps, because it is that stage or later.
+
+    Reaching a stage means having passed every earlier one, so a row that
+    jumps straight to offer stamps applied_at and interview_at as well.  The
+    two exits have no rank, so they stamp nothing.
+    """
+    rank = STAGE_RANK.get(stage)
+    if rank is None:
+        return ()
+    return tuple(
+        column
+        for column, threshold in FUNNEL_THRESHOLD_RANKS.items()
+        if rank >= threshold
+    )
+
+
 def build_row(record, state, status, snapshot_path, frontmatter):
     """The row this run will publish, built from the row it found."""
     row = (
@@ -803,9 +859,9 @@ def build_row(record, state, status, snapshot_path, frontmatter):
         row["last_verified_at"] = frontmatter["last_verified_at"]
     if not row["first_seen_at"]:
         row["first_seen_at"] = record[OCCURRED_AT_FIELD]
-    stage_column = STAGE_TIMESTAMP_COLUMNS.get(status[STAGE_FIELD])
-    if stage_column is not None and not row[stage_column]:
-        row[stage_column] = record[OCCURRED_AT_FIELD]
+    for column in funnel_columns_reached_by(status[STAGE_FIELD]):
+        if not row[column]:
+            row[column] = record[OCCURRED_AT_FIELD]
     return row
 
 
