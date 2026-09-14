@@ -158,6 +158,12 @@ STAGE_RANK = {stage: rank for rank, stage in enumerate(RANKED_STAGES)}
 # a stage inserted between them is gated without this table being touched.
 GATE_FIRST_STAGE = "shortlisted"
 GATE_LAST_STAGE = "offer"
+# Two event types carry something the current state cannot: a document
+# version set, and (were it ever given a payload field) a note.  They warrant
+# an event even when no dimension moved, because an append-only history that
+# drops them is not a history.
+EVENT_BEARING_TYPES = ("documents_updated", "note_recorded")
+
 GATED_STAGES = frozenset(
     stage
     for stage, rank in STAGE_RANK.items()
@@ -275,6 +281,10 @@ class TrackerUnreadableError(Exception):
 
 
 class TrackerDuplicateRowError(Exception):
+    pass
+
+
+class TrackerExistingStatusError(Exception):
     pass
 
 
@@ -480,6 +490,30 @@ def validate_vocabularies(record, report):
                 field,
                 f"{field} must be one of the values this skill defines for it.",
             )
+
+
+def validate_event_payload(record, report):
+    """An event-bearing type must actually carry what it claims to record.
+
+    documents_updated exists to record a document version set, so an empty one
+    records nothing.  note_recorded has no payload field in this contract at
+    all: rather than invent a free-text schema here, it fails closed, so a note
+    is never accepted and then silently dropped.
+    """
+    event_type = record.get(EVENT_TYPE_FIELD)
+    if event_type == "documents_updated" and not record.get(DOCUMENT_VERSIONS_FIELD):
+        report.error(
+            "document_versions_required",
+            DOCUMENT_VERSIONS_FIELD,
+            "documents_updated must carry the document versions it records.",
+        )
+    if event_type == "note_recorded":
+        report.error(
+            "note_payload_unsupported",
+            EVENT_TYPE_FIELD,
+            "note_recorded has no payload field in the application record "
+            "contract, so a note cannot be recorded without losing it.",
+        )
 
 
 def validate_record(record, report):
@@ -793,10 +827,26 @@ class TrackerState:
         return all(self.recorded_status.get(key) == self.row[key] for key in STATUS_KEYS)
 
 
+def validate_recorded_status(rows):
+    """A row already on disk is input too, and it is validated like input.
+
+    The whole file is rewritten on every publish, so a value this skill would
+    refuse in a record must not be carried forward from a row either -- least
+    of all into a fresh event, where a value belonging to another dimension
+    would quietly undo what keeping the dimensions apart is for.  Refusing is
+    the whole response: migrating would mean guessing the candidate's state.
+    """
+    for row in rows:
+        for key in STATUS_KEYS:
+            if row[key] not in STATUS_DIMENSIONS[key]:
+                raise TrackerExistingStatusError
+
+
 def read_tracker_state(workspace, canonical_job_id):
     rows = read_application_rows(workspace / APPLICATIONS_CSV)
     if duplicated_identifiers(rows):
         raise TrackerDuplicateRowError
+    validate_recorded_status(rows)
     events = read_events(workspace / EVENTS_JSONL)
     state = TrackerState(rows, events, canonical_job_id)
     if not state.agrees():
@@ -841,6 +891,21 @@ def funnel_columns_reached_by(stage):
         for column, threshold in FUNNEL_THRESHOLD_RANKS.items()
         if rank >= threshold
     )
+
+
+def funnel_chronology_holds(row):
+    """Are the stamped funnel cells non-decreasing as instants?
+
+    Compared as instants, never as text: two cells written in different
+    timezone offsets sort by string in an order that has nothing to do with
+    when they happened.  Only the stamped cells take part, and an existing one
+    is never rewritten to repair an inversion -- the transition that would
+    cause it is refused instead.
+    """
+    stamped = [parse_instant(row[column]) for column in FUNNEL_COLUMNS if row[column]]
+    if any(instant is None for instant in stamped):
+        return False
+    return all(earlier <= later for earlier, later in zip(stamped, stamped[1:]))
 
 
 def build_row(record, state, status, snapshot_path, frontmatter):
@@ -908,18 +973,33 @@ class Change:
         return CREATED if self.state.row is None else UPDATED
 
 
+def warrants_event(record, state, row):
+    """Is there anything for this run to record?
+
+    The built row decides it, not the five dimensions: a row sitting at
+    submitted with an empty applied_at differs from the row this run would
+    build, so re-asserting the stage repairs the cell instead of
+    short-circuiting to a no-op it could never escape.  An event-bearing type
+    warrants an event whatever the row says, because what it records does not
+    live in the row.
+    """
+    if record[EVENT_TYPE_FIELD] in EVENT_BEARING_TYPES:
+        return True
+    return state.row is None or row != state.row
+
+
 def plan_change(record, state, frontmatter):
     """Decide the whole change without touching a single byte on disk.
 
-    A run whose five dimensions and snapshot path all match the stored row is
-    a no-op: it writes neither file and records no event, because history is
-    the record of state changing and nothing changed.
+    A run that would publish the row it already found, and carries nothing an
+    event alone can hold, is a no-op: it writes neither file and records no
+    event.
     """
     status = next_status(record, state)
     snapshot_path = next_snapshot_path(record, state)
-    if state.status == status and state.snapshot_path == snapshot_path:
-        return Change(state, status, snapshot_path)
     row = build_row(record, state, status, snapshot_path, frontmatter)
+    if not warrants_event(record, state, row):
+        return Change(state, status, snapshot_path)
     return Change(
         state,
         status,
@@ -1035,6 +1115,14 @@ TRACKER_DIAGNOSTICS = (
         "updated without guessing which one is current.",
     ),
     (
+        TrackerExistingStatusError,
+        "tracker_existing_status_invalid",
+        TRACKER_FIELD,
+        "A status already recorded in the tracker is not a value this skill "
+        "writes, so the row cannot be carried forward without guessing what "
+        "the candidate's real state is.",
+    ),
+    (
         TrackerOutOfSyncError,
         "tracker_out_of_sync",
         TRACKER_FIELD,
@@ -1109,6 +1197,25 @@ def validate_gate(status, snapshot_path, report):
         )
 
 
+def validate_chronology(change, report):
+    """A transition that would invert the funnel is refused, not recorded.
+
+    Like the gate, this reads the planned row rather than the record, because
+    an inversion is a property of the row the run would publish -- and like the
+    gate it still runs before any write.
+    """
+    if change.is_noop:
+        return
+    row = row_for(change.rows, change.state.canonical_job_id)
+    if row is not None and not funnel_chronology_holds(row):
+        report.error(
+            "funnel_chronology_invalid",
+            TRACKER_FIELD,
+            "This transition would place a funnel timestamp before an earlier "
+            "one, so the recorded funnel would run backwards.",
+        )
+
+
 def build_report(workspace_argument, record_argument):
     """Validate, precheck, plan, write: nothing is mutated before the plan."""
     report = TrackerReport()
@@ -1123,6 +1230,7 @@ def build_report(workspace_argument, record_argument):
     if record is None:
         return report
     validate_record(record, report)
+    validate_event_payload(record, report)
     if report.errors:
         return report
 
@@ -1145,6 +1253,7 @@ def build_report(workspace_argument, record_argument):
 
     change = plan_change(record, state, frontmatter)
     validate_gate(change.status, change.snapshot_path, report)
+    validate_chronology(change, report)
     if report.errors:
         return report
 

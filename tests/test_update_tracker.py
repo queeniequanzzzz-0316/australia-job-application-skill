@@ -27,11 +27,13 @@ interviewed whether or not anyone recorded those steps.
 
 import contextlib
 import csv
+import importlib
 import json
 import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -1224,18 +1226,30 @@ class StatusVocabularyTests(UpdateTrackerTestCase):
                         self.events(box)[-1]["to_status"]["application_stage"], stage
                     )
 
-    def test_every_event_type_is_accepted_and_recorded(self):
+    def test_every_recordable_event_type_is_accepted_and_recorded(self):
+        # note_recorded is deliberately absent: it has no payload field in this
+        # contract, so it fails closed rather than being accepted and dropped.
+        # documents_updated is recordable only with the versions it records.
+        recordable = tuple(
+            event_type for event_type in EVENT_TYPES if event_type != "note_recorded"
+        )
         with self.sandbox() as box:
             for index, (event_type, action_status) in enumerate(
-                zip(EVENT_TYPES, ACTION_STATUSES)
+                zip(recordable, ACTION_STATUSES)
             ):
                 with self.subTest(event_type=event_type):
+                    extra = (
+                        {"document_versions": {"resume": f"v{index}"}}
+                        if event_type == "documents_updated"
+                        else {}
+                    )
                     self.update_ok(
                         box,
                         record=record_with(
                             occurred_at=f"2026-09-12T09:{index:02d}:00Z",
                             event_type=event_type,
                             action_status=action_status,
+                            **extra,
                         ),
                     )
 
@@ -3097,6 +3111,378 @@ class FixtureTests(UpdateTrackerTestCase):
             self.assertEqual(event["jd_snapshot_path"], snapshot_path)
             self.assertEqual(event["document_versions"], record["document_versions"])
             self.assertEqual(event["occurred_at"], record["occurred_at"])
+
+
+# -- the hardening round ----------------------------------------------------
+
+# Two independent review gates found that the suite pinned the vocabularies
+# with its own literals and never compared them to the module's, so adding a
+# novel value passed every test.  These import the module and compare.
+
+
+def import_script(name):
+    directory = str(ROOT / "scripts")
+    inserted = directory not in sys.path
+    if inserted:
+        sys.path.insert(0, directory)
+    try:
+        return importlib.import_module(name)
+    finally:
+        if inserted and sys.path and sys.path[0] == directory:
+            sys.path.pop(0)
+
+
+class ApprovedContractEqualityTests(unittest.TestCase):
+    maxDiff = None
+
+    def test_the_module_declares_exactly_the_approved_vocabularies(self):
+        tracker = import_script("update_tracker")
+
+        expected_dimensions = {
+            dimension: values
+            for dimension, values in VOCABULARIES.items()
+            if dimension != "event_type"
+        }
+        self.assertEqual(
+            {k: tuple(v) for k, v in tracker.STATUS_DIMENSIONS.items()},
+            {k: tuple(v) for k, v in expected_dimensions.items()},
+        )
+        self.assertEqual(
+            {k: tuple(v) for k, v in tracker.VOCABULARIES.items()},
+            {k: tuple(v) for k, v in VOCABULARIES.items()},
+        )
+        for dimension, values in VOCABULARIES.items():
+            with self.subTest(dimension=dimension):
+                self.assertEqual(tuple(tracker.VOCABULARIES[dimension]), tuple(values))
+
+    def test_the_module_declares_exactly_the_approved_initial_status(self):
+        tracker = import_script("update_tracker")
+
+        self.assertEqual(dict(tracker.INITIAL_STATUS), dict(INITIAL_STATUS))
+
+    def test_the_gate_is_exactly_the_six_approved_stages(self):
+        tracker = import_script("update_tracker")
+
+        self.assertEqual(set(tracker.GATED_STAGES), set(GATED_STAGES))
+        self.assertEqual(len(tracker.GATED_STAGES), 6)
+        for stage in UNGATED_STAGES:
+            with self.subTest(stage=stage):
+                self.assertNotIn(stage, tracker.GATED_STAGES)
+
+    def test_both_modules_agree_on_the_application_header(self):
+        tracker = import_script("update_tracker")
+        initialiser = import_script("initialise_workspace")
+
+        self.assertEqual(
+            tuple(tracker.APPLICATION_HEADER), tuple(initialiser.APPLICATION_HEADER)
+        )
+        self.assertEqual(tuple(tracker.APPLICATION_HEADER), tuple(APPLICATION_HEADER))
+
+
+DOCUMENT_VERSIONS = {"resume": "v3", "cover_letter": "v1"}
+
+
+def documents_record(**overrides):
+    record = record_with(
+        event_type="documents_updated",
+        document_versions=dict(DOCUMENT_VERSIONS),
+        occurred_at="2026-09-13T07:00:00Z",
+    )
+    record.update(overrides)
+    return record
+
+
+class EventOnlyUpdateTests(UpdateTrackerTestCase):
+    """current-state unchanged is not the same as nothing happened."""
+
+    def test_documents_updated_records_an_event_against_an_unchanged_row(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            before = len(self.events(box))
+
+            report = self.update_ok(box, record=documents_record())
+
+            self.assertEqual(report["status"], "updated")
+            self.assertTrue(report["event_recorded"])
+            self.assertIsNotNone(report["event_id"])
+            events = self.events(box)
+            self.assertEqual(len(events), before + 1)
+            self.assertEqual(events[-1]["event_type"], "documents_updated")
+            self.assertEqual(events[-1]["document_versions"], DOCUMENT_VERSIONS)
+
+    def test_repeated_document_updates_are_each_their_own_event(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            before = len(self.events(box))
+            identifiers = []
+
+            for index in range(3):
+                report = self.update_ok(
+                    box,
+                    record=documents_record(
+                        document_versions={"resume": f"v{index + 4}"},
+                        occurred_at=f"2026-09-1{index + 3}T08:00:00Z",
+                    ),
+                )
+                self.assertEqual(report["status"], "updated")
+                self.assertTrue(report["event_recorded"])
+                identifiers.append(report["event_id"])
+
+            self.assertEqual(len(set(identifiers)), 3)
+            events = self.events(box)
+            self.assertEqual(len(events), before + 3)
+            self.assertEqual(
+                [event["document_versions"] for event in events[-3:]],
+                [{"resume": "v4"}, {"resume": "v5"}, {"resume": "v6"}],
+            )
+
+    def test_documents_updated_requires_document_versions(self):
+        with self.sandbox() as box:
+            self.insert(box)
+
+            for label, record in (
+                ("absent", record_with(event_type="documents_updated")),
+                ("empty", documents_record(document_versions={})),
+            ):
+                with self.subTest(document_versions=label):
+                    self.update_expecting_rejection(
+                        box,
+                        "document_versions_required",
+                        "document_versions",
+                        record=record,
+                    )
+
+    def test_note_recorded_fails_closed_because_it_has_no_payload_field(self):
+        with self.sandbox() as box:
+            self.insert(box)
+
+            self.update_expecting_rejection(
+                box,
+                "note_payload_unsupported",
+                "event_type",
+                record=record_with(event_type="note_recorded"),
+            )
+
+    def test_a_status_changed_that_changes_nothing_is_still_unchanged(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            before = len(self.events(box))
+
+            report = self.update_ok(
+                box, record=record_with(event_type="status_changed")
+            )
+
+            self.assertEqual(report["status"], "unchanged")
+            self.assertFalse(report["event_recorded"])
+            self.assertIsNone(report["event_id"])
+            self.assertEqual(len(self.events(box)), before)
+
+
+class ExistingRowStatusTests(UpdateTrackerTestCase):
+    """A row already on disk is input too, and it is validated like input."""
+
+    def plant_cells(self, box, canonical_job_id="job-1", **cells):
+        rows = self.csv_rows(box)
+        for row in rows:
+            if row["canonical_job_id"] == canonical_job_id:
+                row.update(cells)
+        with box.applications_csv.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(APPLICATION_HEADER)
+            for row in rows:
+                writer.writerow([row[column] for column in APPLICATION_HEADER])
+
+    def test_a_retired_value_in_an_existing_row_is_refused(self):
+        retired = {
+            "discovery_status": "duplicate",
+            "verification_status": "verified",
+            "screening_status": "screened_in",
+            "application_stage": "identified",
+            "action_status": "awaiting_candidate",
+        }
+        for dimension, value in retired.items():
+            with self.subTest(dimension=dimension):
+                with self.sandbox() as box:
+                    self.insert(box)
+                    self.plant_cells(box, **{dimension: value})
+
+                    self.update_expecting_rejection(
+                        box, "tracker_existing_status_invalid", None,
+                        record=documents_record(),
+                    )
+
+    def test_a_cross_dimension_value_in_an_existing_row_is_refused(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.plant_cells(box, verification_status="verified")
+
+            self.update_expecting_rejection(
+                box, "tracker_existing_status_invalid", None, record=documents_record()
+            )
+
+    def test_an_unknown_value_in_an_existing_row_is_refused(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.plant_cells(box, screening_status="invented_by_hand")
+
+            self.update_expecting_rejection(
+                box, "tracker_existing_status_invalid", None, record=documents_record()
+            )
+
+    def test_an_invalid_row_belonging_to_another_job_still_blocks(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.insert(box, record=record_with(canonical_job_id="job-2"))
+            self.plant_cells(box, canonical_job_id="job-2", action_status="follow_up_due")
+
+            self.update_expecting_rejection(
+                box, "tracker_existing_status_invalid", None, record=documents_record()
+            )
+
+
+class FunnelRepairTests(UpdateTrackerTestCase):
+    """The no-op decision comes after the derived funnel, or a missing cell
+    can never be repaired."""
+
+    plant_cells = ExistingRowStatusTests.plant_cells
+
+    def reach(self, box, stage, occurred_at):
+        snapshot_path = self.link_snapshot(box)
+        return self.update_ok(
+            box,
+            record=record_with(
+                event_type="status_changed",
+                application_stage=stage,
+                jd_snapshot_path=snapshot_path,
+                occurred_at=occurred_at,
+            ),
+        )
+
+    def assert_repaired(self, stage, column):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.reach(box, stage, "2026-09-13T07:00:00Z")
+            self.plant_cells(box, **{column: ""})
+            before = len(self.events(box))
+
+            report = self.reach(box, stage, "2026-09-15T09:00:00Z")
+
+            self.assertEqual(report["status"], "updated")
+            self.assertTrue(report["event_recorded"])
+            self.assertEqual(
+                self.row_for(box)[column],
+                "2026-09-15T09:00:00Z",
+                f"{column} must be stamped when the row is re-asserted at {stage}",
+            )
+            self.assertEqual(len(self.events(box)), before + 1)
+
+    def test_an_empty_applied_at_is_repaired_by_re_asserting_the_stage(self):
+        self.assert_repaired("submitted", "applied_at")
+
+    def test_an_empty_interview_at_is_repaired_by_re_asserting_the_stage(self):
+        self.assert_repaired("interview", "interview_at")
+
+    def test_an_empty_offer_at_is_repaired_by_re_asserting_the_stage(self):
+        self.assert_repaired("offer", "offer_at")
+
+    def test_a_row_that_already_matches_is_still_unchanged(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.reach(box, "submitted", "2026-09-13T07:00:00Z")
+            before = len(self.events(box))
+            snapshot_path = self.link_snapshot(box)
+
+            report = self.update_ok(
+                box,
+                record=record_with(
+                    event_type="status_changed",
+                    application_stage="submitted",
+                    jd_snapshot_path=snapshot_path,
+                    occurred_at="2026-09-16T07:00:00Z",
+                ),
+            )
+
+            self.assertEqual(report["status"], "unchanged")
+            self.assertFalse(report["event_recorded"])
+            self.assertEqual(len(self.events(box)), before)
+
+
+class FunnelChronologyTests(UpdateTrackerTestCase):
+    """Cells are compared as instants, never as strings, and a transition that
+    would invert the funnel is refused rather than recorded."""
+
+    plant_cells = ExistingRowStatusTests.plant_cells
+
+    def reach(self, box, stage, occurred_at):
+        snapshot_path = self.link_snapshot(box)
+        return record_with(
+            event_type="status_changed",
+            application_stage=stage,
+            jd_snapshot_path=snapshot_path,
+            occurred_at=occurred_at,
+        )
+
+    def test_an_interview_earlier_than_applied_is_refused(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.update_ok(box, record=self.reach(box, "submitted", "2026-06-01T00:00:00Z"))
+
+            self.update_expecting_rejection(
+                box,
+                "funnel_chronology_invalid",
+                None,
+                record=self.reach(box, "interview", "2026-01-15T00:00:00Z"),
+            )
+            self.assertEqual(self.row_for(box)["interview_at"], "")
+
+    def test_an_offer_earlier_than_interview_is_refused(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.update_ok(box, record=self.reach(box, "submitted", "2026-01-01T00:00:00Z"))
+            self.update_ok(box, record=self.reach(box, "interview", "2026-06-01T00:00:00Z"))
+
+            self.update_expecting_rejection(
+                box,
+                "funnel_chronology_invalid",
+                None,
+                record=self.reach(box, "offer", "2026-03-01T00:00:00Z"),
+            )
+            self.assertEqual(self.row_for(box)["offer_at"], "")
+
+    def test_different_offsets_that_are_chronological_are_accepted(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            # 09:00+10:00 is 23:00Z the previous day, so the Z value is later
+            # as an instant even though it sorts earlier as a string.
+            self.update_ok(
+                box, record=self.reach(box, "submitted", "2026-06-01T09:00:00+10:00")
+            )
+            report = self.update_ok(
+                box, record=self.reach(box, "interview", "2026-06-01T00:00:00Z")
+            )
+
+            self.assertEqual(report["status"], "updated")
+            row = self.row_for(box)
+            self.assertEqual(row["applied_at"], "2026-06-01T09:00:00+10:00")
+            self.assertEqual(row["interview_at"], "2026-06-01T00:00:00Z")
+
+    def test_different_offsets_that_are_actually_inverted_are_refused(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            # 12:00Z, then 09:00-10:00 which is 19:00Z the SAME day read as a
+            # string looks earlier, but is actually later; the inverted case
+            # below is 01:00+10:00 == 15:00Z the previous day.
+            self.update_ok(
+                box, record=self.reach(box, "submitted", "2026-06-02T12:00:00Z")
+            )
+
+            self.update_expecting_rejection(
+                box,
+                "funnel_chronology_invalid",
+                None,
+                record=self.reach(box, "interview", "2026-06-02T13:00:00+10:00"),
+            )
+            self.assertEqual(self.row_for(box)["interview_at"], "")
 
 
 if __name__ == "__main__":
