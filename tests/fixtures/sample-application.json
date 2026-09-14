@@ -8,9 +8,5 @@
   "screening_status": "eligible",
   "application_stage": "shortlisted",
   "action_status": "candidate_review",
-  "jd_snapshot_path": "jobs/snapshots/example-board-au-backend-1042.md",
-  "document_versions": {
-    "resume": "resumes/example-board-au-backend-1042-v1.md",
-    "cover_letter": "cover-letters/example-board-au-backend-1042-v1.md"
-  }
+  "jd_snapshot_path": "jobs/snapshots/example-board-au-backend-1042.md"
 }

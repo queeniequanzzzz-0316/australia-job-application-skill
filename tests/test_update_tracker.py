@@ -3076,7 +3076,17 @@ class FixtureTests(UpdateTrackerTestCase):
             f"jobs/snapshots/{job['canonical_job_id']}.md",
             "the fixture must cite the path Task 5 mints for the job fixture",
         )
-        self.assertIsInstance(record["document_versions"], dict)
+        # document_versions is optional, and only documents_updated may carry
+        # a non-empty one, so the fixture is required to be consistent with
+        # its own event type rather than to carry the field at all.
+        if record["event_type"] == "documents_updated":
+            self.assertIsInstance(record.get("document_versions"), dict)
+            self.assertTrue(record["document_versions"])
+        else:
+            self.assertFalse(
+                record.get("document_versions"),
+                "only documents_updated records document versions",
+            )
 
     def test_the_two_fixtures_compose_end_to_end_in_a_fresh_workspace(self):
         job = self.load(JOB_FIXTURE)
@@ -3109,7 +3119,9 @@ class FixtureTests(UpdateTrackerTestCase):
             self.assert_event_shape(event)
             self.assertIsNone(event["from_status"])
             self.assertEqual(event["jd_snapshot_path"], snapshot_path)
-            self.assertEqual(event["document_versions"], record["document_versions"])
+            self.assertEqual(
+                event["document_versions"], record.get("document_versions", {})
+            )
             self.assertEqual(event["occurred_at"], record["occurred_at"])
 
 
@@ -3483,6 +3495,156 @@ class FunnelChronologyTests(UpdateTrackerTestCase):
                 record=self.reach(box, "interview", "2026-06-02T13:00:00+10:00"),
             )
             self.assertEqual(self.row_for(box)["interview_at"], "")
+
+
+class ExistingFunnelTimestampTests(UpdateTrackerTestCase):
+    """A timestamp already on disk is validated like a status already on disk,
+    and with its own code: blaming a transition for damage that predates it
+    tells the operator to fix the wrong thing, and leaves the row unfixable."""
+
+    plant_cells = ExistingRowStatusTests.plant_cells
+
+    MALFORMED = ("not-a-timestamp", "2026-06-01T00:00:00", "2026-13-45T00:00:00Z", "   ")
+
+    def reach_submitted(self, box):
+        snapshot_path = self.link_snapshot(box)
+        self.update_ok(
+            box,
+            record=record_with(
+                event_type="status_changed",
+                application_stage="submitted",
+                jd_snapshot_path=snapshot_path,
+                occurred_at="2026-06-01T00:00:00Z",
+            ),
+        )
+
+    def test_a_malformed_existing_funnel_timestamp_is_refused_by_its_own_code(self):
+        for column in ("applied_at", "interview_at", "offer_at"):
+            for value in self.MALFORMED:
+                with self.subTest(column=column, value=value):
+                    with self.sandbox() as box:
+                        self.insert(box)
+                        self.reach_submitted(box)
+                        self.plant_cells(box, **{column: value})
+
+                        self.update_expecting_rejection(
+                            box,
+                            "tracker_existing_timestamp_invalid",
+                            None,
+                            record=documents_record(),
+                        )
+
+    def test_a_naive_existing_timestamp_is_not_reported_as_a_chronology_fault(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.reach_submitted(box)
+            self.plant_cells(box, applied_at="2026-06-01T00:00:00")
+
+            _result, report = self.update(box, record=documents_record())
+
+            codes = self.codes(report["errors"])
+            self.assertIn("tracker_existing_timestamp_invalid", codes)
+            self.assertNotIn("funnel_chronology_invalid", codes)
+
+    def test_a_malformed_timestamp_on_another_jobs_row_still_blocks(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.insert(box, record=record_with(canonical_job_id="job-2"))
+            self.plant_cells(box, canonical_job_id="job-2", offer_at="not-a-timestamp")
+
+            self.update_expecting_rejection(
+                box, "tracker_existing_timestamp_invalid", None, record=documents_record()
+            )
+
+    def test_valid_timezone_aware_timestamps_are_kept_exactly_as_they_are(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.reach_submitted(box)
+            self.plant_cells(box, applied_at="2026-06-01T09:30:00+10:00")
+
+            report = self.update_ok(box, record=documents_record())
+
+            self.assertEqual(report["status"], "updated")
+            self.assertEqual(self.row_for(box)["applied_at"], "2026-06-01T09:30:00+10:00")
+
+
+class DocumentVersionsEventTypeTests(UpdateTrackerTestCase):
+    """document_versions is a formal event field, so it is never carried by an
+    event type that does not record it -- silently dropping it is the failure
+    this rule exists to prevent."""
+
+    def test_a_non_recording_event_type_may_not_carry_document_versions(self):
+        for event_type in ("status_changed", "snapshot_linked", "application_recorded"):
+            with self.subTest(event_type=event_type):
+                with self.sandbox() as box:
+                    self.insert(box)
+
+                    self.update_expecting_rejection(
+                        box,
+                        "document_versions_unexpected",
+                        "document_versions",
+                        record=record_with(
+                            event_type=event_type,
+                            document_versions={"resume": "v9"},
+                            occurred_at="2026-09-13T07:00:00Z",
+                        ),
+                    )
+
+    def test_a_non_recording_event_type_may_carry_an_empty_document_versions(self):
+        with self.sandbox() as box:
+            self.insert(box)
+
+            report = self.update_ok(
+                box,
+                record=record_with(
+                    event_type="status_changed",
+                    document_versions={},
+                    occurred_at="2026-09-13T07:00:00Z",
+                ),
+            )
+
+            self.assertEqual(report["status"], "unchanged")
+
+    def test_documents_updated_carrying_versions_appends_the_event(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            before = len(self.events(box))
+
+            report = self.update_ok(box, record=documents_record())
+
+            self.assertEqual(report["status"], "updated")
+            self.assertTrue(report["event_recorded"])
+            self.assertEqual(len(self.events(box)), before + 1)
+            self.assertEqual(
+                self.events(box)[-1]["document_versions"], DOCUMENT_VERSIONS
+            )
+
+    def test_documents_updated_without_versions_is_refused(self):
+        with self.sandbox() as box:
+            self.insert(box)
+
+            for label, record in (
+                ("absent", record_with(event_type="documents_updated")),
+                ("empty", documents_record(document_versions={})),
+            ):
+                with self.subTest(document_versions=label):
+                    self.update_expecting_rejection(
+                        box,
+                        "document_versions_required",
+                        "document_versions",
+                        record=record,
+                    )
+
+    def test_note_recorded_stays_unsupported(self):
+        with self.sandbox() as box:
+            self.insert(box)
+
+            self.update_expecting_rejection(
+                box,
+                "note_payload_unsupported",
+                "event_type",
+                record=record_with(event_type="note_recorded"),
+            )
 
 
 if __name__ == "__main__":

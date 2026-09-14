@@ -22,12 +22,33 @@ verbatim: a regenerated or normalised path can drift from the archived bytes it
 is supposed to cite, so a non-canonical spelling of a real snapshot is refused
 rather than repaired.
 
+An event records what the row cannot.  documents_updated carries the document
+versions it names, so it warrants an event of its own even when no dimension
+moved -- and because it is the only event type that records them, a non-empty
+document_versions on any other type is refused rather than quietly dropped.
+note_recorded is a reserved future event type: the application record contract
+defines no payload field for a note, so rather than inventing a free-text
+schema here it fails closed, and nothing about notes is persisted.
+
+A row already on disk is input too.  Before anything is planned, every row's
+five status cells are checked against the same vocabularies a record is held
+to, and every stamped funnel cell is checked to be a timezone-aware instant.
+Both are refused with their own code and never migrated or repaired: the whole
+file is rewritten on each publish, so a value this skill would not write must
+not be carried forward -- least of all into a fresh event -- and guessing a
+missing timezone, or which dimension a stale value belonged to, would be
+inventing the candidate's history rather than recording it.
+
 The funnel timestamps record when a row reached a stage *or any later one*: an
 application at offer has been submitted and interviewed whether or not anyone
 recorded those steps, so a jump straight to offer stamps applied_at,
 interview_at and offer_at at that one instant.  A cell keeps the occurred_at of
 the step that first reached it and is never written again, and the two exits
-have no rank at all, so they invent no timestamp and erase none.
+have no rank at all, so they invent no timestamp and erase none.  The stamped
+cells are compared as instants, never as text, because two cells written in
+different timezone offsets sort by string in an order that has nothing to do
+with when they happened; a transition that would run the funnel backwards is
+refused rather than recorded, and no existing cell is rewritten to repair one.
 
 The run touches two files, so it cannot be atomic and the order is what makes
 the surviving failure the recoverable one:
@@ -288,6 +309,10 @@ class TrackerExistingStatusError(Exception):
     pass
 
 
+class TrackerExistingTimestampError(Exception):
+    pass
+
+
 class TrackerOutOfSyncError(Exception):
     pass
 
@@ -501,11 +526,19 @@ def validate_event_payload(record, report):
     is never accepted and then silently dropped.
     """
     event_type = record.get(EVENT_TYPE_FIELD)
-    if event_type == "documents_updated" and not record.get(DOCUMENT_VERSIONS_FIELD):
+    versions = record.get(DOCUMENT_VERSIONS_FIELD)
+    if event_type == "documents_updated" and not versions:
         report.error(
             "document_versions_required",
             DOCUMENT_VERSIONS_FIELD,
             "documents_updated must carry the document versions it records.",
+        )
+    elif versions and event_type != "documents_updated":
+        report.error(
+            "document_versions_unexpected",
+            DOCUMENT_VERSIONS_FIELD,
+            "Only documents_updated records document versions, so carrying "
+            "them on another event type would drop them without saying so.",
         )
     if event_type == "note_recorded":
         report.error(
@@ -842,11 +875,27 @@ def validate_recorded_status(rows):
                 raise TrackerExistingStatusError
 
 
+def validate_recorded_timestamps(rows):
+    """A stamped funnel cell must be an instant this skill could have written.
+
+    This runs at read time, before anything compares the funnel, so an
+    unparseable or timezone-less cell is reported as the stored damage it is
+    rather than as an inversion the current transition caused -- which would
+    name the wrong fault and leave the row unfixable.  A blank cell is simply
+    not stamped yet and is fine.
+    """
+    for row in rows:
+        for column in FUNNEL_COLUMNS:
+            if row[column] and parse_instant(row[column]) is None:
+                raise TrackerExistingTimestampError
+
+
 def read_tracker_state(workspace, canonical_job_id):
     rows = read_application_rows(workspace / APPLICATIONS_CSV)
     if duplicated_identifiers(rows):
         raise TrackerDuplicateRowError
     validate_recorded_status(rows)
+    validate_recorded_timestamps(rows)
     events = read_events(workspace / EVENTS_JSONL)
     state = TrackerState(rows, events, canonical_job_id)
     if not state.agrees():
@@ -901,10 +950,12 @@ def funnel_chronology_holds(row):
     when they happened.  Only the stamped cells take part, and an existing one
     is never rewritten to repair an inversion -- the transition that would
     cause it is refused instead.
+
+    Every cell reaching here parses: a stored one was checked by
+    validate_recorded_timestamps and a fresh one comes from a validated
+    occurred_at, which is what keeps this answer meaning one thing.
     """
     stamped = [parse_instant(row[column]) for column in FUNNEL_COLUMNS if row[column]]
-    if any(instant is None for instant in stamped):
-        return False
     return all(earlier <= later for earlier, later in zip(stamped, stamped[1:]))
 
 
@@ -1121,6 +1172,14 @@ TRACKER_DIAGNOSTICS = (
         "A status already recorded in the tracker is not a value this skill "
         "writes, so the row cannot be carried forward without guessing what "
         "the candidate's real state is.",
+    ),
+    (
+        TrackerExistingTimestampError,
+        "tracker_existing_timestamp_invalid",
+        TRACKER_FIELD,
+        "A funnel timestamp already in the tracker is not one this skill "
+        "writes, so it cannot be compared or carried forward; it is left "
+        "exactly as it is rather than repaired or given a guessed timezone.",
     ),
     (
         TrackerOutOfSyncError,
