@@ -32,7 +32,8 @@ schema here it fails closed, and nothing about notes is persisted.
 
 A row already on disk is input too.  Before anything is planned, every row's
 five status cells are checked against the same vocabularies a record is held
-to, and every stamped funnel cell is checked to be a timezone-aware instant.
+to, and a row's stamped funnel cells are checked to be timezone-aware
+instants that already run forwards.
 Both are refused with their own code and never migrated or repaired: the whole
 file is rewritten on each publish, so a value this skill would not write must
 not be carried forward -- least of all into a fresh event -- and guessing a
@@ -876,18 +877,31 @@ def validate_recorded_status(rows):
 
 
 def validate_recorded_timestamps(rows):
-    """A stamped funnel cell must be an instant this skill could have written.
+    """A stamped funnel cell must be an instant this skill could have written,
+    and the stamped cells of a row must already run forwards.
 
-    This runs at read time, before anything compares the funnel, so an
-    unparseable or timezone-less cell is reported as the stored damage it is
+    This runs at read time, before anything compares the funnel of the row
+    this run would build, so stored damage is reported where it is found
     rather than as an inversion the current transition caused -- which would
-    name the wrong fault and leave the row unfixable.  A blank cell is simply
-    not stamped yet and is fine.
+    name the wrong fault and leave the row with no way out, since the exits
+    stamp nothing and so could never clear it.  A row that runs backwards is
+    always stored damage: cells are only ever filled when empty, from one
+    validated instant, and a publish that would invert them is refused, so
+    this skill cannot have written one.  Refusing is the whole response;
+    deciding which of two timestamps is the wrong one would be inventing the
+    candidate's history.  A blank cell is simply not stamped yet and is fine.
     """
     for row in rows:
+        stamped = []
         for column in FUNNEL_COLUMNS:
-            if row[column] and parse_instant(row[column]) is None:
+            if not row[column]:
+                continue
+            instant = parse_instant(row[column])
+            if instant is None:
                 raise TrackerExistingTimestampError
+            stamped.append(instant)
+        if any(later < earlier for earlier, later in zip(stamped, stamped[1:])):
+            raise TrackerExistingTimestampError
 
 
 def read_tracker_state(workspace, canonical_job_id):
@@ -1178,8 +1192,10 @@ TRACKER_DIAGNOSTICS = (
         "tracker_existing_timestamp_invalid",
         TRACKER_FIELD,
         "A funnel timestamp already in the tracker is not one this skill "
-        "writes, so it cannot be compared or carried forward; it is left "
-        "exactly as it is rather than repaired or given a guessed timezone.",
+        "could have written -- malformed, missing a timezone, or stamped "
+        "before an earlier stage's -- so the row cannot be carried forward; "
+        "it is left exactly as it is rather than repaired, reordered or "
+        "given a guessed timezone.",
     ),
     (
         TrackerOutOfSyncError,

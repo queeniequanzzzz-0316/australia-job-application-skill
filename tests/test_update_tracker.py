@@ -3647,5 +3647,161 @@ class DocumentVersionsEventTypeTests(UpdateTrackerTestCase):
             )
 
 
+class ExistingFunnelOrderTests(UpdateTrackerTestCase):
+    """A stored row whose funnel cells are each a legal instant but run
+    backwards is damage that predates every later run, so it is reported where
+    it is found rather than blamed on the transition that tripped over it."""
+
+    plant_cells = ExistingRowStatusTests.plant_cells
+
+    def planted(self, box, **cells):
+        self.insert(box)
+        self.plant_cells(box, **cells)
+
+    def assert_existing_order_refused(self, **cells):
+        with self.sandbox() as box:
+            self.planted(box, **cells)
+
+            _result, report = self.update(box, record=documents_record())
+
+            codes = self.codes(report["errors"])
+            self.assertIn("tracker_existing_timestamp_invalid", codes)
+            self.assertNotIn("funnel_chronology_invalid", codes)
+            self.assertFalse(report["event_recorded"])
+
+    # -- A: applied_at later than interview_at
+    def test_an_applied_at_after_the_interview_at_is_refused(self):
+        self.assert_existing_order_refused(
+            applied_at="2026-06-05T00:00:00Z", interview_at="2026-06-01T00:00:00Z"
+        )
+
+    # -- B: interview_at later than offer_at
+    def test_an_interview_at_after_the_offer_at_is_refused(self):
+        self.assert_existing_order_refused(
+            interview_at="2026-06-05T00:00:00Z", offer_at="2026-06-01T00:00:00Z"
+        )
+
+    # -- C: all three present and ordered
+    def test_three_ordered_timestamps_pass_the_existing_row_check(self):
+        with self.sandbox() as box:
+            self.planted(
+                box,
+                applied_at="2026-06-01T00:00:00Z",
+                interview_at="2026-06-02T00:00:00Z",
+                offer_at="2026-06-03T00:00:00Z",
+            )
+
+            report = self.update_ok(box, record=documents_record())
+
+            self.assertEqual(report["status"], "updated")
+            row = self.row_for(box)
+            self.assertEqual(row["applied_at"], "2026-06-01T00:00:00Z")
+            self.assertEqual(row["interview_at"], "2026-06-02T00:00:00Z")
+            self.assertEqual(row["offer_at"], "2026-06-03T00:00:00Z")
+
+    # -- D: the same instant three times
+    def test_three_identical_instants_are_allowed(self):
+        with self.sandbox() as box:
+            self.planted(
+                box,
+                applied_at="2026-06-01T00:00:00Z",
+                interview_at="2026-06-01T00:00:00Z",
+                offer_at="2026-06-01T00:00:00Z",
+            )
+
+            report = self.update_ok(box, record=documents_record())
+
+            self.assertEqual(report["status"], "updated")
+
+    # -- E: offsets that look unordered as text but are ordered as instants
+    def test_offsets_that_only_look_unordered_as_text_are_allowed(self):
+        with self.sandbox() as box:
+            # 23:00+10:00 is 13:00Z; 14:00Z is later, though "14" sorts below
+            # "23"; and 01:00+13:00 the next day is 12:00Z... so use a set that
+            # is strictly increasing as instants while descending as strings.
+            self.planted(
+                box,
+                applied_at="2026-06-01T23:00:00+10:00",  # 13:00Z
+                interview_at="2026-06-01T20:00:00+05:00",  # 15:00Z
+                offer_at="2026-06-01T17:00:00+00:00",  # 17:00Z
+            )
+
+            report = self.update_ok(box, record=documents_record())
+
+            self.assertEqual(report["status"], "updated")
+            self.assertEqual(
+                self.row_for(box)["applied_at"], "2026-06-01T23:00:00+10:00"
+            )
+
+    # -- F: offsets that are genuinely inverted as instants
+    def test_offsets_that_are_genuinely_inverted_are_refused(self):
+        # 2026-06-01T20:00:00+10:00 is 10:00Z; 2026-06-01T09:00:00Z is earlier,
+        # although "20" sorts above "09".
+        self.assert_existing_order_refused(
+            applied_at="2026-06-01T20:00:00+10:00", interview_at="2026-06-01T09:00:00Z"
+        )
+
+    # -- G: the inverted row belongs to another job
+    def test_an_inverted_row_on_another_job_fails_the_whole_tracker_closed(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.insert(box, record=record_with(canonical_job_id="job-2"))
+            self.plant_cells(
+                box,
+                canonical_job_id="job-2",
+                applied_at="2026-06-05T00:00:00Z",
+                interview_at="2026-06-01T00:00:00Z",
+            )
+            before = self.row_for(box, "job-1")
+
+            self.update_expecting_rejection(
+                box,
+                "tracker_existing_timestamp_invalid",
+                None,
+                record=documents_record(),
+            )
+
+            self.assertEqual(self.row_for(box, "job-1"), before)
+
+    # -- H: operations that stamp nothing must not slip past
+    def test_operations_that_stamp_nothing_still_fail_closed(self):
+        stamps_nothing = (
+            ("documents_updated", "shortlisted", documents_record()),
+            (
+                "withdrawn",
+                "withdrawn",
+                record_with(
+                    event_type="status_changed",
+                    application_stage="withdrawn",
+                    occurred_at="2026-09-20T07:00:00Z",
+                ),
+            ),
+            (
+                "rejected",
+                "rejected",
+                record_with(
+                    event_type="status_changed",
+                    application_stage="rejected",
+                    occurred_at="2026-09-20T07:00:00Z",
+                ),
+            ),
+        )
+        for label, _stage, record in stamps_nothing:
+            with self.subTest(operation=label):
+                with self.sandbox() as box:
+                    self.planted(
+                        box,
+                        applied_at="2026-06-05T00:00:00Z",
+                        interview_at="2026-06-01T00:00:00Z",
+                    )
+
+                    self.update_expecting_rejection(
+                        box,
+                        "tracker_existing_timestamp_invalid",
+                        None,
+                        record=record,
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()
