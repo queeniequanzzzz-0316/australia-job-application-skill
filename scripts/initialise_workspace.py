@@ -52,6 +52,10 @@ APPLICATION_HEADER = (
     "applied_at",
     "interview_at",
     "offer_at",
+    "first_response_at",
+    "next_action",
+    "action_due_at",
+    "blocker_category",
 )
 
 

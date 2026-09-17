@@ -149,6 +149,7 @@ STAGE_FIELD = "application_stage"
 EVENT_TYPE_FIELD = "event_type"
 EVENT_TYPES = (
     "application_recorded",
+    "employer_response_recorded",
     "status_changed",
     "snapshot_linked",
     "documents_updated",
@@ -180,11 +181,14 @@ STAGE_RANK = {stage: rank for rank, stage in enumerate(RANKED_STAGES)}
 # a stage inserted between them is gated without this table being touched.
 GATE_FIRST_STAGE = "shortlisted"
 GATE_LAST_STAGE = "offer"
-# Two event types carry something the current state cannot: a document
-# version set, and (were it ever given a payload field) a note.  They warrant
-# an event even when no dimension moved, because an append-only history that
-# drops them is not a history.
-EVENT_BEARING_TYPES = ("documents_updated", "note_recorded")
+# These event types carry history that is not reducible to a status change.
+# They warrant an event even when the row otherwise stays the same, because an
+# append-only history that drops them is not a history.
+EVENT_BEARING_TYPES = (
+    "documents_updated",
+    "employer_response_recorded",
+    "note_recorded",
+)
 
 GATED_STAGES = frozenset(
     stage
@@ -213,6 +217,11 @@ OCCURRED_AT_FIELD = "occurred_at"
 SOURCE_FIELD = "source"
 SNAPSHOT_PATH_FIELD = "jd_snapshot_path"
 DOCUMENT_VERSIONS_FIELD = "document_versions"
+FIRST_RESPONSE_FIELD = "first_response_at"
+NEXT_ACTION_FIELD = "next_action"
+ACTION_DUE_AT_FIELD = "action_due_at"
+BLOCKER_CATEGORY_FIELD = "blocker_category"
+REASON_FIELD = "reason"
 RECORD_FIELD = "application"
 TRACKER_FIELD = "tracker"
 WORKSPACE_FIELD = "workspace"
@@ -228,8 +237,19 @@ OPTIONAL_FIELDS = (
     *(key for key in STATUS_KEYS if key != STAGE_FIELD),
     SNAPSHOT_PATH_FIELD,
     DOCUMENT_VERSIONS_FIELD,
+    NEXT_ACTION_FIELD,
+    ACTION_DUE_AT_FIELD,
+    BLOCKER_CATEGORY_FIELD,
+    REASON_FIELD,
 )
 ACCEPTED_FIELDS = frozenset(REQUIRED_FIELDS + OPTIONAL_FIELDS)
+
+CURRENT_STATE_FIELDS = (
+    FIRST_RESPONSE_FIELD,
+    NEXT_ACTION_FIELD,
+    ACTION_DUE_AT_FIELD,
+    BLOCKER_CATEGORY_FIELD,
+)
 
 
 # -- the two tracker files --------------------------------------------------
@@ -243,6 +263,7 @@ APPLICATION_HEADER = (
     "first_seen_at",
     "last_verified_at",
     *FUNNEL_COLUMNS,
+    *CURRENT_STATE_FIELDS,
 )
 
 TRACKER_DIRECTORY = "tracker"
@@ -271,6 +292,9 @@ MAXIMUM_RECORD_BYTES = 1024 * 1024
 MAXIMUM_TRACKER_BYTES = 4 * 1024 * 1024
 MAXIMUM_SNAPSHOT_BYTES = 4 * 1024 * 1024
 MAXIMUM_JOB_ID_LENGTH = 128
+MAXIMUM_NEXT_ACTION_LENGTH = 500
+MAXIMUM_BLOCKER_CATEGORY_LENGTH = 120
+MAXIMUM_REASON_LENGTH = 2000
 JOB_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 VERSION_SEPARATOR = "--"
 TIMESTAMP_PATTERN = re.compile(
@@ -311,6 +335,10 @@ class TrackerExistingStatusError(Exception):
 
 
 class TrackerExistingTimestampError(Exception):
+    pass
+
+
+class TrackerExistingCurrentStateError(Exception):
     pass
 
 
@@ -467,7 +495,7 @@ def parse_instant(value):
     """
     if not isinstance(value, str):
         return None
-    match = TIMESTAMP_PATTERN.match(value)
+    match = TIMESTAMP_PATTERN.fullmatch(value)
     if match is None:
         return None
     zone = parse_zone(match.group("zone"))
@@ -586,6 +614,46 @@ def validate_record(record, report):
             "document_versions_invalid",
             DOCUMENT_VERSIONS_FIELD,
             "document_versions must be a JSON object.",
+        )
+    if NEXT_ACTION_FIELD in record and (
+        not isinstance(record[NEXT_ACTION_FIELD], str)
+        or len(record[NEXT_ACTION_FIELD]) > MAXIMUM_NEXT_ACTION_LENGTH
+    ):
+        report.error(
+            "next_action_invalid",
+            NEXT_ACTION_FIELD,
+            f"next_action must be a string of no more than "
+            f"{MAXIMUM_NEXT_ACTION_LENGTH} characters.",
+        )
+    if ACTION_DUE_AT_FIELD in record:
+        action_due_at = record[ACTION_DUE_AT_FIELD]
+        if not isinstance(action_due_at, str) or (
+            action_due_at and parse_instant(action_due_at) is None
+        ):
+            report.error(
+                "action_due_at_invalid",
+                ACTION_DUE_AT_FIELD,
+                "action_due_at must be empty or an RFC 3339 instant with a UTC offset.",
+            )
+    if BLOCKER_CATEGORY_FIELD in record and (
+        not isinstance(record[BLOCKER_CATEGORY_FIELD], str)
+        or len(record[BLOCKER_CATEGORY_FIELD]) > MAXIMUM_BLOCKER_CATEGORY_LENGTH
+    ):
+        report.error(
+            "blocker_category_invalid",
+            BLOCKER_CATEGORY_FIELD,
+            f"blocker_category must be a string of no more than "
+            f"{MAXIMUM_BLOCKER_CATEGORY_LENGTH} characters.",
+        )
+    if REASON_FIELD in record and (
+        not isinstance(record[REASON_FIELD], str)
+        or len(record[REASON_FIELD]) > MAXIMUM_REASON_LENGTH
+    ):
+        report.error(
+            "reason_invalid",
+            REASON_FIELD,
+            f"reason must be a string of no more than "
+            f"{MAXIMUM_REASON_LENGTH} characters.",
         )
 
 
@@ -818,10 +886,10 @@ def row_for(rows, canonical_job_id):
     return None
 
 
-def last_recorded_status(events, canonical_job_id):
+def last_recorded_event(events, canonical_job_id):
     for event in reversed(events):
         if event.get(IDENTITY_FIELD) == canonical_job_id:
-            return event.get("to_status")
+            return event
     return ABSENT
 
 
@@ -836,7 +904,12 @@ class TrackerState:
         self.rows = rows
         self.canonical_job_id = canonical_job_id
         self.row = row_for(rows, canonical_job_id)
-        self.recorded_status = last_recorded_status(events, canonical_job_id)
+        self.recorded_event = last_recorded_event(events, canonical_job_id)
+        self.recorded_status = (
+            ABSENT
+            if self.recorded_event is ABSENT
+            else self.recorded_event.get("to_status")
+        )
 
     @property
     def status(self):
@@ -858,7 +931,14 @@ class TrackerState:
             return self.recorded_status is ABSENT
         if not isinstance(self.recorded_status, dict):
             return False
-        return all(self.recorded_status.get(key) == self.row[key] for key in STATUS_KEYS)
+        statuses_agree = all(
+            self.recorded_status.get(key) == self.row[key] for key in STATUS_KEYS
+        )
+        current_state_agrees = all(
+            self.recorded_event.get(key, "") == self.row[key]
+            for key in CURRENT_STATE_FIELDS
+        )
+        return statuses_agree and current_state_agrees
 
 
 def validate_recorded_status(rows):
@@ -876,9 +956,21 @@ def validate_recorded_status(rows):
                 raise TrackerExistingStatusError
 
 
+def validate_recorded_current_state(rows):
+    """Refuse stored action text that this skill would not write."""
+    for row in rows:
+        if (
+            len(row[NEXT_ACTION_FIELD]) > MAXIMUM_NEXT_ACTION_LENGTH
+            or len(row[BLOCKER_CATEGORY_FIELD]) > MAXIMUM_BLOCKER_CATEGORY_LENGTH
+        ):
+            raise TrackerExistingCurrentStateError
+
+
 def validate_recorded_timestamps(rows):
-    """A stamped funnel cell must be an instant this skill could have written,
-    and the stamped cells of a row must already run forwards.
+    """Every stored timestamp must be one this skill could have written.
+
+    Response and action-due timestamps must be timezone-aware instants.  The
+    stamped funnel cells must additionally already run forwards.
 
     This runs at read time, before anything compares the funnel of the row
     this run would build, so stored damage is reported where it is found
@@ -892,6 +984,9 @@ def validate_recorded_timestamps(rows):
     candidate's history.  A blank cell is simply not stamped yet and is fine.
     """
     for row in rows:
+        for column in (FIRST_RESPONSE_FIELD, ACTION_DUE_AT_FIELD):
+            if row[column] and parse_instant(row[column]) is None:
+                raise TrackerExistingTimestampError
         stamped = []
         for column in FUNNEL_COLUMNS:
             if not row[column]:
@@ -909,6 +1004,7 @@ def read_tracker_state(workspace, canonical_job_id):
     if duplicated_identifiers(rows):
         raise TrackerDuplicateRowError
     validate_recorded_status(rows)
+    validate_recorded_current_state(rows)
     validate_recorded_timestamps(rows)
     events = read_events(workspace / EVENTS_JSONL)
     state = TrackerState(rows, events, canonical_job_id)
@@ -925,7 +1021,14 @@ def next_status(record, state):
     documented initial value when there is no row yet."""
     status = {}
     for key in STATUS_KEYS:
-        if key in record:
+        response_preserves_stage = (
+            record[EVENT_TYPE_FIELD] == "employer_response_recorded"
+            and key == STAGE_FIELD
+            and state.row is not None
+        )
+        if response_preserves_stage:
+            status[key] = state.row[key]
+        elif key in record:
             status[key] = record[key]
         elif state.row is not None:
             status[key] = state.row[key]
@@ -989,9 +1092,18 @@ def build_row(record, state, status, snapshot_path, frontmatter):
         row["last_verified_at"] = frontmatter["last_verified_at"]
     if not row["first_seen_at"]:
         row["first_seen_at"] = record[OCCURRED_AT_FIELD]
-    for column in funnel_columns_reached_by(status[STAGE_FIELD]):
-        if not row[column]:
-            row[column] = record[OCCURRED_AT_FIELD]
+    for field in (NEXT_ACTION_FIELD, ACTION_DUE_AT_FIELD, BLOCKER_CATEGORY_FIELD):
+        if field in record:
+            row[field] = record[field]
+    if (
+        record[EVENT_TYPE_FIELD] == "employer_response_recorded"
+        and not row[FIRST_RESPONSE_FIELD]
+    ):
+        row[FIRST_RESPONSE_FIELD] = record[OCCURRED_AT_FIELD]
+    if record[EVENT_TYPE_FIELD] != "employer_response_recorded":
+        for column in funnel_columns_reached_by(status[STAGE_FIELD]):
+            if not row[column]:
+                row[column] = record[OCCURRED_AT_FIELD]
     return row
 
 
@@ -1003,8 +1115,8 @@ def replace_row(rows, canonical_job_id, row):
     return [*rows, row]
 
 
-def build_event(record, state, status, snapshot_path):
-    return {
+def build_event(record, state, status, snapshot_path, row):
+    event = {
         "event_id": uuid.uuid4().hex,
         OCCURRED_AT_FIELD: record[OCCURRED_AT_FIELD],
         IDENTITY_FIELD: state.canonical_job_id,
@@ -1014,7 +1126,10 @@ def build_event(record, state, status, snapshot_path):
         SNAPSHOT_PATH_FIELD: snapshot_path or None,
         DOCUMENT_VERSIONS_FIELD: record.get(DOCUMENT_VERSIONS_FIELD, {}),
         SOURCE_FIELD: record[SOURCE_FIELD],
+        REASON_FIELD: record.get(REASON_FIELD, ""),
     }
+    event.update({field: row[field] for field in CURRENT_STATE_FIELDS})
+    return event
 
 
 class Change:
@@ -1070,7 +1185,7 @@ def plan_change(record, state, frontmatter):
         status,
         snapshot_path,
         rows=replace_row(state.rows, state.canonical_job_id, row),
-        event=build_event(record, state, status, snapshot_path),
+        event=build_event(record, state, status, snapshot_path, row),
     )
 
 
@@ -1196,6 +1311,13 @@ TRACKER_DIAGNOSTICS = (
         "before an earlier stage's -- so the row cannot be carried forward; "
         "it is left exactly as it is rather than repaired, reordered or "
         "given a guessed timezone.",
+    ),
+    (
+        TrackerExistingCurrentStateError,
+        "tracker_existing_current_state_invalid",
+        TRACKER_FIELD,
+        "Action text already recorded in the tracker is longer than this skill "
+        "writes, so the row cannot be carried forward; it is left exactly as it is.",
     ),
     (
         TrackerOutOfSyncError,

@@ -76,6 +76,10 @@ APPLICATION_HEADER = [
     "applied_at",
     "interview_at",
     "offer_at",
+    "first_response_at",
+    "next_action",
+    "action_due_at",
+    "blocker_category",
 ]
 
 DESCRIPTIVE_COLUMNS = ("source", "canonical_url", "job_title", "company", "location")
@@ -127,6 +131,7 @@ ACTION_STATUSES = (
 )
 EVENT_TYPES = (
     "application_recorded",
+    "employer_response_recorded",
     "status_changed",
     "snapshot_linked",
     "documents_updated",
@@ -268,6 +273,7 @@ EVENT_KEYS = {
     "jd_snapshot_path",
     "document_versions",
     "source",
+    "reason",
 }
 
 REQUIRED_FIELDS = (
@@ -645,13 +651,13 @@ class UpdateTrackerTestCase(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertTrue(rows, "applications.csv must always keep its header")
         self.assertEqual(
-            rows[0], APPLICATION_HEADER, "the header must be the agreed 17 columns"
+            rows[0], APPLICATION_HEADER, "the header must be the agreed 21 columns"
         )
         for row in rows[1:]:
             self.assertEqual(
                 len(row),
                 len(APPLICATION_HEADER),
-                f"every row must carry all 17 columns: {row!r}",
+                f"every row must carry all 21 columns: {row!r}",
             )
         return [dict(zip(APPLICATION_HEADER, row)) for row in rows[1:]]
 
@@ -983,6 +989,392 @@ class OccurredAtTests(UpdateTrackerTestCase):
 
                     self.assertEqual(report["status"], "created")
                     self.assertEqual(self.events(box)[0]["occurred_at"], value)
+
+
+class ResponseAndActionMetadataTests(UpdateTrackerTestCase):
+    """Task 6 additions keep employer contact distinct from lifecycle state."""
+
+    def response_record(self, occurred_at, **overrides):
+        record = record_with(
+            occurred_at=occurred_at,
+            event_type="employer_response_recorded",
+            application_stage="not_started",
+        )
+        record.update(overrides)
+        return record
+
+    def test_first_employer_response_stamps_the_response_time_without_moving_stage(self):
+        response_at = "2026-09-13T08:15:00+10:00"
+        with self.sandbox() as box:
+            self.insert(box)
+
+            report = self.update_ok(box, record=self.response_record(response_at))
+
+            self.assertEqual(report["status"], "updated")
+            row = self.row_for(box)
+            self.assertEqual(row["first_response_at"], response_at)
+            self.assertEqual(row["application_stage"], "not_started")
+            self.assertEqual(
+                self.events(box)[-1]["event_type"], "employer_response_recorded"
+            )
+
+    def test_later_employer_response_appends_an_event_and_preserves_the_first_time(self):
+        first_response_at = "2026-09-13T08:15:00+10:00"
+        later_response_at = "2026-09-14T09:30:00+10:00"
+        with self.sandbox() as box:
+            self.insert(box)
+            self.update_ok(box, record=self.response_record(first_response_at))
+            before = len(self.events(box))
+
+            report = self.update_ok(
+                box, record=self.response_record(later_response_at)
+            )
+
+            self.assertEqual(report["status"], "updated")
+            self.assertTrue(report["event_recorded"])
+            self.assertEqual(len(self.events(box)), before + 1)
+            self.assertEqual(self.row_for(box)["first_response_at"], first_response_at)
+            self.assertEqual(self.events(box)[-1]["occurred_at"], later_response_at)
+
+    def test_lifecycle_transitions_do_not_infer_an_employer_response(self):
+        for stage in ("interview", "offer", "rejected", "accepted"):
+            with self.subTest(application_stage=stage):
+                with self.sandbox() as box:
+                    self.insert(box)
+                    record = record_with(
+                        event_type="status_changed",
+                        application_stage=stage,
+                        occurred_at="2026-09-13T07:00:00Z",
+                    )
+                    if stage in ("interview", "offer"):
+                        record["jd_snapshot_path"] = self.link_snapshot(box)
+
+                    self.update_ok(box, record=record)
+
+                    row = self.row_for(box)
+                    self.assertEqual(row["application_stage"], stage)
+                    self.assertEqual(row["first_response_at"], "")
+
+    def test_employer_response_does_not_repair_missing_funnel_timestamps(self):
+        with self.sandbox() as box:
+            snapshot_path = self.link_snapshot(box)
+            self.insert(
+                box,
+                record=record_with(
+                    application_stage="submitted",
+                    jd_snapshot_path=snapshot_path,
+                ),
+            )
+            row = self.row_for(box)
+            row["applied_at"] = ""
+            with box.applications_csv.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=APPLICATION_HEADER)
+                writer.writeheader()
+                writer.writerow(row)
+
+            response_at = "2026-09-13T08:15:00+10:00"
+            self.update_ok(box, record=self.response_record(response_at))
+
+            updated = self.row_for(box)
+            self.assertEqual(updated["application_stage"], "submitted")
+            self.assertEqual(updated["applied_at"], "")
+            self.assertEqual(updated["first_response_at"], response_at)
+
+    def test_timezone_aware_action_due_at_is_accepted_and_persisted(self):
+        due_at = "2026-09-20T09:00:00+10:00"
+        with self.sandbox() as box:
+            self.insert(
+                box,
+                record=record_with(
+                    next_action="Email the recruiter",
+                    action_due_at=due_at,
+                ),
+            )
+
+            row = self.row_for(box)
+            self.assertEqual(row["next_action"], "Email the recruiter")
+            self.assertEqual(row["action_due_at"], due_at)
+
+    def test_empty_next_action_and_action_due_at_are_accepted(self):
+        with self.sandbox() as box:
+            self.insert(
+                box,
+                record=record_with(next_action="", action_due_at=""),
+            )
+
+            row = self.row_for(box)
+            self.assertEqual(row["next_action"], "")
+            self.assertEqual(row["action_due_at"], "")
+
+    def test_non_string_next_action_fails_closed(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.update_expecting_rejection(
+                box,
+                "next_action_invalid",
+                "next_action",
+                record=record_with(
+                    event_type="status_changed",
+                    action_status="follow_up",
+                    occurred_at="2026-09-13T07:00:00Z",
+                    next_action=["email recruiter"],
+                ),
+            )
+
+    def test_malformed_or_timezone_naive_action_due_at_fails_closed(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            for label, value in (
+                ("malformed", "not-a-date"),
+                ("timezone_naive", "2026-09-20T09:00:00"),
+            ):
+                with self.subTest(action_due_at=label):
+                    self.update_expecting_rejection(
+                        box,
+                        "action_due_at_invalid",
+                        "action_due_at",
+                        record=record_with(
+                            event_type="status_changed",
+                            action_status="follow_up",
+                            occurred_at="2026-09-13T07:00:00Z",
+                            action_due_at=value,
+                        ),
+                    )
+
+    def test_blocker_category_is_optional_free_text_but_must_be_a_short_string(self):
+        with self.sandbox() as box:
+            self.insert(box, record=record_with(blocker_category=""))
+            self.assertEqual(self.row_for(box)["blocker_category"], "")
+
+        arbitrary_category = "Waiting on a referee reply"
+        with self.sandbox() as box:
+            self.insert(
+                box,
+                record=record_with(blocker_category=arbitrary_category),
+            )
+            self.assertEqual(
+                self.row_for(box)["blocker_category"], arbitrary_category
+            )
+
+        invalid_values = (
+            ("non_string", 7),
+            ("clearly_overlong", "x" * 10_000),
+        )
+        for label, value in invalid_values:
+            with self.subTest(blocker_category=label):
+                with self.sandbox() as box:
+                    self.insert(box)
+                    self.update_expecting_rejection(
+                        box,
+                        "blocker_category_invalid",
+                        "blocker_category",
+                        record=record_with(
+                            event_type="status_changed",
+                            action_status="blocked",
+                            occurred_at="2026-09-13T07:00:00Z",
+                            blocker_category=value,
+                        ),
+                    )
+
+    def test_overlong_stored_action_text_fails_closed(self):
+        invalid_values = (
+            ("next_action", "x" * 501),
+            ("blocker_category", "x" * 121),
+        )
+        for field, value in invalid_values:
+            with self.subTest(field=field):
+                with self.sandbox() as box:
+                    self.insert(box)
+                    row = self.row_for(box)
+                    row[field] = value
+                    with box.applications_csv.open(
+                        "w", newline="", encoding="utf-8"
+                    ) as handle:
+                        writer = csv.DictWriter(handle, fieldnames=APPLICATION_HEADER)
+                        writer.writeheader()
+                        writer.writerow(row)
+                    events = self.events(box)
+                    events[-1][field] = value
+                    box.events_jsonl.write_text(
+                        "".join(json.dumps(event) + "\n" for event in events),
+                        encoding="utf-8",
+                    )
+
+                    self.update_expecting_rejection(
+                        box,
+                        "tracker_existing_current_state_invalid",
+                        "tracker",
+                        record=record_with(
+                            event_type="status_changed",
+                            action_status="follow_up",
+                            occurred_at="2026-09-13T07:00:00Z",
+                        ),
+                    )
+
+    def test_reason_is_event_history_only_and_defaults_to_empty(self):
+        reason = (
+            "Recruiter confirmed the hiring manager is reviewing the application."
+        )
+        with self.sandbox() as box:
+            self.insert(box)
+            self.update_ok(
+                box,
+                record=self.response_record(
+                    "2026-09-13T08:15:00+10:00", reason=reason
+                ),
+            )
+            self.update_ok(
+                box,
+                record=self.response_record("2026-09-14T09:30:00+10:00"),
+            )
+
+            events = self.events(box)
+            self.assertEqual(events[-2]["reason"], reason)
+            self.assertEqual(events[-1]["reason"], "")
+            self.assertNotIn("reason", self.row_for(box))
+
+    def test_non_string_reason_fails_closed(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            self.update_expecting_rejection(
+                box,
+                "reason_invalid",
+                "reason",
+                record=record_with(
+                    event_type="status_changed",
+                    action_status="follow_up",
+                    occurred_at="2026-09-13T07:00:00Z",
+                    reason=7,
+                ),
+            )
+
+    def test_rejected_action_metadata_update_preserves_both_tracker_files(self):
+        with self.sandbox() as box:
+            self.insert(box)
+            applications = box.applications_csv.read_bytes()
+            events = box.events_jsonl.read_bytes()
+            self.pin_mtime(box.applications_csv)
+            self.pin_mtime(box.events_jsonl)
+
+            self.update_expecting_rejection(
+                box,
+                "action_due_at_invalid",
+                "action_due_at",
+                record=record_with(
+                    event_type="status_changed",
+                    action_status="follow_up",
+                    occurred_at="2026-09-13T07:00:00Z",
+                    action_due_at="tomorrow morning",
+                ),
+            )
+
+            self.assert_untouched(box.applications_csv, applications)
+            self.assert_untouched(box.events_jsonl, events)
+
+
+class ExactActionDueAtTests(UpdateTrackerTestCase):
+    """action_due_at accepts exact RFC 3339 text, never trailing bytes."""
+
+    def plant_action_due_at(self, box, value):
+        rows = self.csv_rows(box)
+        rows[0]["action_due_at"] = value
+        with box.applications_csv.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=APPLICATION_HEADER)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        events = self.events(box)
+        events[-1]["action_due_at"] = value
+        box.events_jsonl.write_text(
+            "".join(json.dumps(event, ensure_ascii=False) + "\n" for event in events),
+            encoding="utf-8",
+        )
+
+    def test_incoming_action_due_at_rejects_non_exact_or_timezone_naive_text(self):
+        invalid_values = (
+            ("final_newline", "2026-09-20T09:00:00Z\n"),
+            ("final_crlf", "2026-09-20T09:00:00Z\r\n"),
+            ("trailing_space", "2026-09-20T09:00:00Z "),
+            ("trailing_junk", "2026-09-20T09:00:00Zjunk"),
+            ("timezone_naive", "2026-09-20T09:00:00"),
+        )
+        for label, value in invalid_values:
+            with self.subTest(action_due_at=label):
+                with self.sandbox() as box:
+                    self.insert(box)
+                    self.update_expecting_rejection(
+                        box,
+                        "action_due_at_invalid",
+                        "action_due_at",
+                        record=record_with(
+                            event_type="status_changed",
+                            action_status="follow_up",
+                            occurred_at="2026-09-13T07:00:00Z",
+                            action_due_at=value,
+                        ),
+                    )
+
+    def test_incoming_exact_rfc3339_action_due_at_is_preserved_verbatim(self):
+        legal_values = (
+            "2026-09-20T09:00:00Z",
+            "2026-09-20T09:00:00+10:00",
+            "2026-09-20T09:00:00.123456789Z",
+        )
+        for value in legal_values:
+            with self.subTest(action_due_at=value):
+                with self.sandbox() as box:
+                    self.insert(box, record=record_with(action_due_at=value))
+
+                    self.assertEqual(self.row_for(box)["action_due_at"], value)
+                    self.assertEqual(self.events(box)[-1]["action_due_at"], value)
+
+    def test_invalid_stored_action_due_at_is_refused_without_touching_tracker(self):
+        invalid_values = (
+            ("final_newline", "2026-09-20T09:00:00Z\n"),
+            ("trailing_junk", "2026-09-20T09:00:00Zjunk"),
+        )
+        for label, value in invalid_values:
+            with self.subTest(action_due_at=label):
+                with self.sandbox() as box:
+                    self.insert(box)
+                    self.plant_action_due_at(box, value)
+                    applications = box.applications_csv.read_bytes()
+                    events = box.events_jsonl.read_bytes()
+                    self.pin_mtime(box.applications_csv)
+                    self.pin_mtime(box.events_jsonl)
+
+                    self.update_expecting_rejection(
+                        box,
+                        "tracker_existing_timestamp_invalid",
+                        "tracker",
+                        record=record_with(),
+                    )
+
+                    self.assert_untouched(box.applications_csv, applications)
+                    self.assert_untouched(box.events_jsonl, events)
+
+    def test_legal_stored_action_due_at_validates_without_reserializing_tracker(self):
+        legal_values = (
+            "2026-09-20T09:00:00Z",
+            "2026-09-20T09:00:00+10:00",
+            "2026-09-20T09:00:00.123456789Z",
+        )
+        for value in legal_values:
+            with self.subTest(action_due_at=value):
+                with self.sandbox() as box:
+                    self.insert(box, record=record_with(action_due_at=value))
+                    applications = box.applications_csv.read_bytes()
+                    events = box.events_jsonl.read_bytes()
+                    self.pin_mtime(box.applications_csv)
+                    self.pin_mtime(box.events_jsonl)
+
+                    report = self.update_ok(box, record=record_with())
+
+                    self.assertEqual(report["status"], "unchanged")
+                    self.assertFalse(report["event_recorded"])
+                    self.assertEqual(self.row_for(box)["action_due_at"], value)
+                    self.assert_untouched(box.applications_csv, applications)
+                    self.assert_untouched(box.events_jsonl, events)
 
 
 class StatusVocabularyTests(UpdateTrackerTestCase):
@@ -2123,7 +2515,7 @@ class WorkspaceContainmentTests(UpdateTrackerTestCase):
 
 
 class ApplicationsCsvTests(UpdateTrackerTestCase):
-    """The CSV is current state: one row per job, the agreed 17 columns, and a
+    """The CSV is current state: one row per job, the agreed 21 columns, and a
     replacement written by rename so a reader never sees a half-written file."""
 
     def raw_header(self, box):
@@ -2139,12 +2531,12 @@ class ApplicationsCsvTests(UpdateTrackerTestCase):
                 ),
             )
 
-    def test_the_header_is_the_agreed_seventeen_columns_in_that_order(self):
+    def test_the_header_is_the_agreed_twenty_one_columns_in_that_order(self):
         with self.sandbox() as box:
             self.insert(box)
 
             self.assertEqual(self.raw_header(box), ",".join(APPLICATION_HEADER))
-            self.assertEqual(len(APPLICATION_HEADER), 17)
+            self.assertEqual(len(APPLICATION_HEADER), 21)
 
     def test_an_update_replaces_the_row_rather_than_appending_a_second(self):
         with self.sandbox() as box:
@@ -3181,14 +3573,20 @@ class ApprovedContractEqualityTests(unittest.TestCase):
             with self.subTest(stage=stage):
                 self.assertNotIn(stage, tracker.GATED_STAGES)
 
-    def test_both_modules_agree_on_the_application_header(self):
+    def test_initializer_template_and_both_modules_share_the_application_header(self):
         tracker = import_script("update_tracker")
         initialiser = import_script("initialise_workspace")
+        template_path = (
+            ROOT / "assets" / "workspace-template" / "applications.example.csv"
+        )
+        with template_path.open(newline="", encoding="utf-8") as handle:
+            template_rows = list(csv.reader(handle))
 
         self.assertEqual(
             tuple(tracker.APPLICATION_HEADER), tuple(initialiser.APPLICATION_HEADER)
         )
         self.assertEqual(tuple(tracker.APPLICATION_HEADER), tuple(APPLICATION_HEADER))
+        self.assertEqual(template_rows, [APPLICATION_HEADER])
 
 
 DOCUMENT_VERSIONS = {"resume": "v3", "cover_letter": "v1"}
