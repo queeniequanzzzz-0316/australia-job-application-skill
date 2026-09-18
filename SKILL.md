@@ -35,9 +35,9 @@ Morning discovery and evening check-in automation each require separate explicit
 
 ## Reference Routing Boundary
 
-`SKILL.md` owns mode selection, orchestration, safety, consent, and gate rules. The following future references own detailed procedures; read only the one needed for the current workflow. These files are routing targets and are not part of the current repository shell.
+`SKILL.md` owns mode selection, orchestration, safety, consent, and gate rules. The following references provide the detailed procedures; read only the one needed for the current workflow and follow its links when related guidance is required.
 
-| Future reference | Detailed ownership |
+| Reference | Detailed ownership |
 | --- | --- |
 | `references/onboarding.md` | Candidate interview, profile fields, resume intake, and profile confirmation |
 | `references/australian-work-rights.md` | Current official-source checks, onshore/offshore distinctions, sponsorship, and legal-advice limits |
