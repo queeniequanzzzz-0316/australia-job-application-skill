@@ -1,0 +1,12 @@
+{
+  "scenario_id": "ONB-04",
+  "responder_thread_id": "01a0dcd6-21ea-7630-bdfa-53159a97a250",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "final": "I’ve updated your private current-state profile to **pending** and recorded an append-only onboarding intake entry.\n\nCandidate Profile Summary:\n\n- Location: Brisbane — candidate-supplied, unconfirmed\n- Current location mode: Unknown; Brisbane does not establish whether you are currently onshore or offshore\n- Australian work rights: Unrestricted — candidate-supplied, unconfirmed\n- Target work: Full-time administration roles — candidate-supplied, unconfirmed\n- Preferred distance: Within 20 km — candidate-supplied, unconfirmed\n- Demographic information: declined\n- Disability-adjustment needs: unknown\n- Work arrangement preference: Unknown\n- Availability or notice period: Unknown\n- Salary expectations: Unknown\n- Experience, qualifications, and other evidence: Not supplied\n\n“Declined” and “unknown” are preserved exactly and do not mean “no.” These fields will not be used for suitability scoring or ranking, and no further sensitive disclosure is required.\n\nPlease confirm or correct the summary and answer these non-sensitive questions:\n\n1. Are you currently onshore in Australia or offshore?\n2. Do you prefer on-site, hybrid, remote, or any work arrangement?\n3. When could you start, or what is your notice period?\n4. Should salary remain unspecified?\n5. After profile confirmation, how many shortlisted roles would you like to receive?\n\nSearch filters will be prepared only after you confirm the profile. Discovery has not started.",
+    "other_visible": []
+  }
+}

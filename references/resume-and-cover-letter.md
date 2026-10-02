@@ -2,10 +2,10 @@
 
 ## Preparation flow
 
-1. The candidate selects a verified job before preparation begins. Reuse its `canonical_job_id` and exact `jd_snapshot_path`; resolve missing or changed job evidence before drafting.
+1. The candidate selects a verified job before preparation begins. Require the screening decision record that links its `canonical_job_id`, exact `jd_snapshot_path`, source URL and retrieval time; if any linkage is missing or incomplete, fail closed and do not begin preparation. Resolve changed job evidence before drafting.
 2. Preserve the Master Resume and create a tailored, job-specific document version. Tailor ordering, emphasis and language using only supported evidence for each claim; do not change the underlying facts. Apply the same rule to cover letters and application answers.
 3. Perform an Evidence Audit: map each material claim to its source evidence and the relevant JD requirement, check consistency of dates, names, skills and numbers, and record gaps. Use the exact provenance taxonomy in [references/job-screening-and-scoring.md](job-screening-and-scoring.md).
-4. Remove unsupported claims from submission-ready documents or surface them as `needs_confirmation` in the review draft. Ask for the underlying fact and supporting context before incorporating a correction.
+4. Remove unsupported claims from submission-ready documents or surface them as `needs_confirmation` in the review draft. When refusing an unsupported claim, immediately provide actual truthful replacement wording grounded in available evidence in the same response; do not merely promise a later replacement. Replacement wording may use only the exact verified or supported facts: never add, expand, extrapolate or imply activities, responsibility, scope or outcomes that the evidence does not establish. Preserve every supported number, quantity, duration and metric exactly; do not change an exact value into “over,” “more than,” “at least,” “approximately,” or a rounded value. Ask for the underlying fact and supporting context before incorporating a correction.
 5. Present material changes, remaining gaps and the audited documents for candidate approval. Candidate approval of wording does not validate an unsupported fact; confirmation must establish the underlying claim. Mark documents ready only when the audit and approval are complete.
 
 ## Truthfulness boundary

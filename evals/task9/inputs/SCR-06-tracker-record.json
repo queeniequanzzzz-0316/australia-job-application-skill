@@ -1,0 +1,14 @@
+{
+  "canonical_job_id": "unverified-entry-level-data-assistant",
+  "occurred_at": "2026-09-29T18:05:00+10:00",
+  "event_type": "status_changed",
+  "source": "supplied_ad",
+  "discovery_status": "discovered",
+  "verification_status": "verification_failed",
+  "screening_status": "excluded",
+  "application_stage": "not_started",
+  "action_status": "blocked",
+  "next_action": "Do not apply while the employer and engagement remain unverified.",
+  "blocker_category": "unresolved_scam_and_contractor_risk",
+  "reason": "The supplied ad omits employer identity and physical location, requires an equipment fee and pre-interview passport details, and describes an unverified independent-contractor arrangement."
+}

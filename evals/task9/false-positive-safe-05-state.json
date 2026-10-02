@@ -1,0 +1,90 @@
+{
+  "artifact_status": "historical_false_positive",
+  "invalidated_by": "Unsupported synthetic tracker event types and incomplete silence evidence",
+  "fixture": "SAFE-05",
+  "synthetic": true,
+  "consent": {
+    "morning_search": {
+      "status": "authorized",
+      "schedule": "daily"
+    },
+    "notification_policy": "actionable_changes_only"
+  },
+  "current_state": {
+    "top_n": [
+      "R1",
+      "R2"
+    ],
+    "last_run_id": "safe-05-run-2026-09-21",
+    "last_run_at": "2026-09-21T08:00:00+10:00",
+    "last_run_outcome": "no_actionable_change",
+    "actionable_change": false,
+    "notification_sent": false
+  },
+  "event_log": [
+    {
+      "event_id": "safe-05-event-prior-success",
+      "event_type": "scheduled_run",
+      "run_id": "safe-05-run-2026-09-20",
+      "occurred_at": "2026-09-20T08:00:00+10:00",
+      "outcome": "success",
+      "top_n_after": [
+        "R1",
+        "R2"
+      ],
+      "historical": true
+    },
+    {
+      "event_id": "safe-05-event-2026-09-21-rejection-1",
+      "event_type": "discovery_candidate_rejected",
+      "run_id": "safe-05-run-2026-09-21",
+      "occurred_at": "2026-09-21T08:01:00+10:00",
+      "discovery_candidate_id": "SAFE05-D1",
+      "outcome": "rejected",
+      "reason": "duplicate_of_known",
+      "duplicate_of": "R1",
+      "entered_top_n": false
+    },
+    {
+      "event_id": "safe-05-event-2026-09-21-rejection-2",
+      "event_type": "discovery_candidate_rejected",
+      "run_id": "safe-05-run-2026-09-21",
+      "occurred_at": "2026-09-21T08:02:00+10:00",
+      "discovery_candidate_id": "SAFE05-D2",
+      "outcome": "rejected",
+      "reason": "closed",
+      "verification_status": "closed",
+      "entered_top_n": false
+    },
+    {
+      "event_id": "safe-05-event-2026-09-21-rejection-3",
+      "event_type": "discovery_candidate_rejected",
+      "run_id": "safe-05-run-2026-09-21",
+      "occurred_at": "2026-09-21T08:03:00+10:00",
+      "discovery_candidate_id": "SAFE05-D3",
+      "outcome": "rejected",
+      "reason": "mandatory_work_right_restriction",
+      "hard_gate_status": "failed",
+      "entered_top_n": false
+    },
+    {
+      "event_id": "safe-05-event-2026-09-21-run",
+      "event_type": "scheduled_run",
+      "run_id": "safe-05-run-2026-09-21",
+      "occurred_at": "2026-09-21T08:04:00+10:00",
+      "outcome": "no_actionable_change",
+      "discovered_count": 3,
+      "rejected_count": 3,
+      "actionable_count": 0,
+      "top_n_before": [
+        "R1",
+        "R2"
+      ],
+      "top_n_after": [
+        "R1",
+        "R2"
+      ],
+      "notification_sent": false
+    }
+  ]
+}

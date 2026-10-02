@@ -1,0 +1,9 @@
+{
+  "scenario_id": "SCR-03",
+  "responder_thread_id": "01a0dcc4-9f82-7892-b5df-e32287ebf1d9",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [], "progress": [], "status": [], "other_visible": [],
+    "final": "The Employer Gamma Registered Nurse role is **excluded at the Hard Gate**.\n\n- **Profile:** Confirmed; it explicitly records no current AHPRA registration.\n- **Filter:** No filter confirmation was supplied or inferred. No broader Discovery search was performed.\n- **Verification:** The dated Employer Gamma advertisement states that current AHPRA registration is mandatory. Supplied AHPRA guidance confirms that current registration is required to practise. Both sources were retrieved on 10 September 2026.\n- **Hard Gate:** **Fail.** The mandatory current AHPRA registration requirement is unmet.\n- **Ranking:** Not scored or ranked because a mandatory requirement failed.\n- **Top N:** Excluded.\n\nThe overseas nursing degree is not treated as current Australian registration. No application preparation or submission occurred."
+  }
+}

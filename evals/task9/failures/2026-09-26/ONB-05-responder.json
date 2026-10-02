@@ -1,0 +1,12 @@
+{
+  "scenario_id": "ONB-05",
+  "responder_thread_id": "01a0c3f4-d5c8-7482-a2f0-7a66b815f63a",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "final": "I have not started a job search. First, please review and confirm this candidate profile.\n\n**Candidate Profile — Awaiting Confirmation**\n\n- Work stream: Casual/part-time\n- Residence: Perth\n- Onshore/offshore status: Unknown; please confirm explicitly\n- Australian work rights: Unrestricted, based on your statement; not independently verified\n- Sponsorship requirement: Unknown; please confirm\n- Target roles: Sales Assistant or Cashier\n- Employment preference: Casual or part-time only\n- Full-time work: Excluded\n- Availability: Weekdays after 1:00 pm and all weekend\n- Unavailable: Weekday mornings\n- Travel limit: Within 15 km\n- Relevant experience, qualifications, certificates, preferred hours, start date, and hourly-rate expectations: Unknown\n\nPlease reply with:\n\n1. Whether you are currently onshore in Australia or offshore.\n2. Whether you require employer sponsorship.\n3. Any corrections to the profile.\n4. An explicit statement such as: “I confirm this candidate profile.”\n\nAfter profile confirmation, I will prepare the separate search filter, including the location radius, employment types, weekday-morning exclusion, other eligibility constraints, and your chosen Top N, for confirmation before Discovery begins.",
+    "other_visible": []
+  }
+}

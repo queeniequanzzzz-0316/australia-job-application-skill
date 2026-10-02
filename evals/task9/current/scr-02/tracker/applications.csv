@@ -1,0 +1,2 @@
+canonical_job_id,jd_snapshot_path,source,canonical_url,job_title,company,location,discovery_status,verification_status,screening_status,application_stage,action_status,first_seen_at,last_verified_at,applied_at,interview_at,offer_at,first_response_at,next_action,action_due_at,blocker_category
+employer-beta-ba-102,,,,,,,discovered,jd_verified,excluded,not_started,blocked,2026-09-29T18:00:00+10:00,,,,,,Do not apply to this vacancy.,,work_rights_and_sponsorship

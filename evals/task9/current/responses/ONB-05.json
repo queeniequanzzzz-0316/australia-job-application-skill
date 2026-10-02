@@ -1,0 +1,12 @@
+{
+  "scenario_id": "ONB-05",
+  "responder_thread_id": "01a0dccd-cd03-7171-90c8-1720a29a9e12",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "final": "Private current-state profile updated:\n\n- Confirmation state: **pending**\n- Stream: Casual or part-time only\n- Roles: Sales assistant or cashier\n- Employment: Casual or part-time; full-time excluded\n- Location: Perth; preferred radius 15 km\n- Availability: Weekdays after 1:00 pm and all weekend\n- Unavailable: Weekday mornings\n- Australian work rights: Unrestricted\n- Onshore/offshore status: **unknown — not inferred from residence**\n- Hourly-rate preference and relevant certificates: Unknown\n- Evidence source: Your supplied statements; no unsupported claims added\n\nAppend-only onboarding audit event recorded: candidate intake captured, current profile saved as pending confirmation, and unresolved fields retained as unknown.\n\nBefore I construct search filters, please confirm or correct this profile and answer:\n\n1. Are you currently physically **onshore in Australia** or **offshore**?\n2. Should the 15 km radius be measured from your Perth residence, Perth CBD, or another suburb/postcode?\n\nSearch filters and Job Discovery will remain paused until the profile is confirmed.",
+    "other_visible": []
+  }
+}

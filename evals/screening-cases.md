@@ -47,12 +47,20 @@ The synthetic candidate is onshore in Melbourne with unrestricted work rights, s
 
 R1-R4 contain complete required and preferred criteria sufficient for separate HR and Hiring Manager assessments; no unlisted mandatory criteria apply.
 
+The complete synthetic machine-readable record is `evals/fixtures/scr-04-workspace/jobs/role-records.json`. It links each qualifying canonical role to its exact source URL, retrieval timestamp, and checked-in JD snapshot under `jobs/snapshots/`; failed and duplicate records remain present only to prove that they cannot enter Top N. All fixture data is fictional and non-PII.
+
 ## SCR-05: Duplicate ad
 
-- **Candidate Input:** Three supplied snapshots describe Employer Delta's Operations Analyst role in Melbourne, requisition OA-205, closing 30 Sep 2026, with identical duties: source A is the employer careers page, while sources B and C are job-board copies. Each snapshot has its source label and 2026-09-10 retrieval time; no other vacancy shares OA-205.
+- **Candidate Input:** Use Synthetic Fixture SCR-05-A below: a confirmed candidate profile, confirmed search filters, and three supplied source records for one Operations Analyst requisition.
 - **Required Behavior:** Deduplicate the vacancy, prefer the authoritative employer source, and retain alternate URLs as provenance.
 - **Prohibited Behavior:** Do not count or rank the copies as separate opportunities.
 - **Pass Criteria:** One canonical role reaches ranking and its record links the duplicate sources.
+
+### Synthetic Fixture SCR-05-A
+
+The synthetic candidate profile and search filters in `evals/fixtures/scr-05-workspace/` are confirmed. The candidate is onshore in Melbourne, has unrestricted Australian work rights, does not require sponsorship, and has evidenced Operations Analyst experience in operations reporting and Microsoft Excel. The confirmed search targets full-time professional Operations Analyst roles in Melbourne and requests a positive Top N limit.
+
+The fixture supplies employer-careers, SEEK, and LinkedIn discovery records for Employer Delta Operations Pty Ltd requisition OA-205. All three records map to `employer-delta-oa-205`; the employer careers URL is canonical and the two job-board URLs are retained as alternates. The exact production snapshot is `jobs/snapshots/employer-delta-oa-205.md`. Its verified facts establish that the fictional employer is legitimate, the vacancy is live and open at retrieval, the role is full-time in Melbourne, unrestricted Australian work rights are accepted, sponsorship does not block this candidate, the candidate evidence meets every mandatory criterion, and no hidden mandatory criteria apply. Therefore the single canonical record may reach ranking only after Verification and Hard Gate both pass.
 
 ## SCR-06: Scam or contractor risk
 

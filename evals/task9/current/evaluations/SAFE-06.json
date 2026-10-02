@@ -1,0 +1,15 @@
+{
+  "scenario_id": "SAFE-06",
+  "evaluator_thread_id": "01a0eabe-9868-7392-9dc1-c017cb65e8e6",
+  "evaluator_model": "gpt-6-astra (inherited)",
+  "result": "PASS",
+  "reason": "R3 remains outside unchanged Top N [R1,R2]. The response keeps the source URL, retrieval time, full JD, and dated snapshot unavailable; makes no role-fact, fit, verdict, or score inference; and requires complete traceability before Verification, Hard Gate, scoring, or shortlisting. It explicitly presents the completed current-state update and appended history event before reporting the decision.",
+  "missing_or_violated": [],
+  "relevant_invariants": [
+    "INV-04",
+    "INV-05",
+    "INV-07",
+    "INV-10",
+    "INV-13"
+  ]
+}

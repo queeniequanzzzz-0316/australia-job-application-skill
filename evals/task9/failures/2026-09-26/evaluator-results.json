@@ -1,0 +1,76 @@
+{
+  "artifact_status": "preserved_failure_evidence",
+  "root_cause": "The detailed onboarding reference required durable transition recording, but the top-level confirmation gate did not repeat that operation and four isolated responders omitted it.",
+  "additional_root_causes": [
+    "The screening reference required append-only ranking history but did not state one ordered rule covering current-state updates and history events for screening, ranking, shortlist and exclusion decisions before reporting them. Four isolated responders therefore reported correct decisions without evidencing both persistence operations.",
+    "The SCR-04 response also summarized R7 and R8 without restating their exact fixture verification and Hard Gate status fields."
+  ],
+  "results": [
+    {
+      "scenario_id": "ONB-02",
+      "result": "FAIL",
+      "reason": "Missing explicit current-state profile update and append-only intake/profile-draft event.",
+      "evaluator_thread_id": "01a0dcca-5272-78c0-8422-706857ced9ea"
+    },
+    {
+      "scenario_id": "ONB-03",
+      "result": "FAIL",
+      "reason": "Missing current-state profile update and append-only onboarding event for pending confirmation.",
+      "evaluator_thread_id": "01a0dcca-52b5-71e2-80ed-20ca1060ca47"
+    },
+    {
+      "scenario_id": "ONB-05",
+      "result": "FAIL",
+      "reason": "Missing current-state profile update and append-only onboarding intake/confirmation event.",
+      "evaluator_thread_id": "01a0dcca-5369-73e1-8762-e0e17f5259c4"
+    },
+    {
+      "scenario_id": "SCR-01",
+      "result": "FAIL",
+      "reason": "Missing current-state profile update and append-only intake event before the confirmation gate.",
+      "evaluator_thread_id": "01a0dcca-550e-7182-b2bc-5c74f92be61f"
+    },
+    {
+      "scenario_id": "ONB-03",
+      "result": "FAIL",
+      "reason": "The corrected durable transition response omitted the intended employment stream and did not ask the candidate to confirm Professional versus Casual/Part-time.",
+      "evaluator_thread_id": "01a0dcd7-b5b1-74e2-bf5c-57f2afcb4984"
+    },
+    {
+      "scenario_id": "ONB-04",
+      "result": "FAIL",
+      "reason": "The pre-stream-contract response preserved sensitive values and gates but omitted explicit Professional/Casual-Part-time stream confirmation.",
+      "evaluator_thread_id": "01a0e18b-719b-7c30-a2a9-dc3b87cd09c7"
+    },
+    {
+      "scenario_id": "SCR-03",
+      "result": "FAIL",
+      "reason": "The exclusion was correct, but the visible transcript did not evidence a current-state tracker update or append-only event.",
+      "evaluator_thread_id": "01a0e191-8fad-7011-a31a-540997e5c458"
+    },
+    {
+      "scenario_id": "SCR-04",
+      "result": "FAIL",
+      "reason": "The shortlist was correct, but persistence operations were omitted and the exact R7/R8 stage statuses were not restated.",
+      "evaluator_thread_id": "01a0e191-8f66-7d70-9812-da4b4b665b19"
+    },
+    {
+      "scenario_id": "SCR-05",
+      "result": "FAIL",
+      "reason": "Deduplication and ranking were correct, but the visible transcript did not evidence the current-state update and append-only ranking event.",
+      "evaluator_thread_id": "01a0e191-903a-72c2-aee7-c26d974b2a36"
+    },
+    {
+      "scenario_id": "SCR-07",
+      "result": "FAIL",
+      "reason": "The Hard Gate rejection was correct, but the visible transcript did not evidence a current-state tracker update or append-only rejection event.",
+      "evaluator_thread_id": "01a0e191-909c-70d2-a1e9-991bb18873d9"
+    },
+    {
+      "scenario_id": "SAFE-06",
+      "result": "FAIL",
+      "reason": "The snapshot gate was correct, but the visible transcript did not evidence a current-state tracker update or append-only incomplete-verification event.",
+      "evaluator_thread_id": "01a0e19e-541e-7940-8a3b-eadd566a2729"
+    }
+  ]
+}

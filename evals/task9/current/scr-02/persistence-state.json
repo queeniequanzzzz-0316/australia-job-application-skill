@@ -1,0 +1,31 @@
+{
+  "artifact_status": "current_synthetic_evidence",
+  "canonical_job_id": "employer-beta-ba-102",
+  "event_id": "d32ed49316274775aa3324f711dbd853",
+  "event_log_path": "tracker/events.jsonl",
+  "event_log_sha256": "4cbe0c083de788c3767251da9ee72d4c88484060c98cebd500e55be252c1b1b8",
+  "execution_trace": [
+    {
+      "canonical_job_id": "employer-beta-ba-102",
+      "operation": "event_appended",
+      "sequence": 1
+    },
+    {
+      "canonical_job_id": "employer-beta-ba-102",
+      "operation": "current_state_published",
+      "sequence": 2
+    },
+    {
+      "canonical_job_id": "employer-beta-ba-102",
+      "operation": "final_report_emitted",
+      "responder_thread_id": "01a0ead7-81c5-70b3-a746-f886d246fda7",
+      "sequence": 3
+    }
+  ],
+  "input_record": "../../../inputs/SCR-02-tracker-record.json",
+  "production_writer": "scripts/update_tracker.py",
+  "scenario_id": "SCR-02",
+  "synthetic": true,
+  "tracker_path": "tracker/applications.csv",
+  "tracker_sha256": "2e2692cbabba80ec67c24d3b1a716af2dd225519c25d43fee52ba6614cf1c518"
+}

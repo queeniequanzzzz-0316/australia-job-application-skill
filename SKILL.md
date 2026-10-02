@@ -15,7 +15,7 @@ Candidate data belongs in the private local workspace and must never be committe
 
 ## Required Confirmations
 
-Confirm the candidate profile before using it. Then confirm the candidate-controlled search filter, including role, location, work arrangement, eligibility constraints, and Top N. Scheduled searches may use only the latest confirmed profile and filter.
+Confirm the candidate profile before using it. Profile confirmation must explicitly include the intended stream: Professional, Casual/Part-time, or both. Before asking the candidate to confirm, update the private current-state profile with its actual confirmation state, including `pending`, and append the intake or confirmation event to the private append-only event log. Then confirm the candidate-controlled search filter, including role, location, work arrangement, eligibility constraints, and Top N. Scheduled searches may use only the latest confirmed profile and filter.
 
 ## Operating Modes
 
@@ -25,7 +25,7 @@ Confirm the candidate profile before using it. Then confirm the candidate-contro
 
 ## Orchestration Gates
 
-Move roles through **Discovery -> Verification -> Hard Gate -> Top N**. Use progressive JD retrieval: inspect lower-cost discovery evidence first, then retrieve and verify the complete JD only for plausible candidates. Do not place a role in Top N or begin Application Preparation until a dated JD snapshot records the source URL and retrieval time.
+Move roles through **Discovery -> Verification -> Hard Gate -> Top N**. After deterministic deduplication, duplicates become exactly one canonical opportunity entering the ranking input candidate set; this does not bypass Verification or Hard Gate or admit the role to scoring or Top N. Use progressive JD retrieval: inspect lower-cost discovery evidence first, then retrieve and verify the complete JD only for plausible candidates. Do not place a role in Top N or begin Application Preparation until a dated JD snapshot records the source URL and retrieval time.
 
 For every shortlisted role, provide separate **HR** and **Hiring Manager** perspectives grounded in the same candidate evidence and JD snapshot. Do not pad Top N when fewer roles pass the gates.
 

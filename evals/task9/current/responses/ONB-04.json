@@ -1,0 +1,12 @@
+{
+  "scenario_id": "ONB-04",
+  "responder_thread_id": "01a0e18d-d1d4-7493-bb09-128361237f6f",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "final": "I’ve recorded the private current-state profile as **pending** and appended this onboarding intake to the private history.\n\n**Candidate Profile Summary — Pending**\n\n- Location: Brisbane\n- Location mode: unknown\n- Australian work rights: unrestricted\n- Target: full-time administration roles within 20 km\n- Intended stream: unknown\n- demographic information=declined\n- disability-adjustment needs=unknown\n\nThe two sensitive fields will be excluded from ranking. No further disclosure is required.\n\nBefore profile confirmation, please confirm:\n\n1. Intended stream: **Professional**, **Casual/Part-time**, or **both**\n2. Location mode: **onshore in Australia** or **offshore**\n\nSearch filters and Discovery will remain deferred until the profile is explicitly confirmed.",
+    "other_visible": []
+  }
+}

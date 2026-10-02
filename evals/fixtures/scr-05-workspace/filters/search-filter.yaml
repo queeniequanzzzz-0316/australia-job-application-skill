@@ -1,0 +1,30 @@
+fixture_id: SCR-05-A
+market: Australia
+timezone: Australia/Melbourne
+employment_stream: professional
+target_roles:
+  - Operations Analyst
+top_n: 10
+sources:
+  - employer_careers
+  - SEEK
+  - LinkedIn
+locations:
+  - Melbourne VIC
+employment_types:
+  - full-time
+salary_bounds:
+  minimum_aud: null
+  maximum_aud: null
+remote_preference: any
+sponsorship_need: false
+recency_days: 30
+exclusions: []
+hard_gates:
+  - current_open_vacancy
+  - legitimate_employer
+  - melbourne_location
+  - full_time_employment
+  - work_rights_compatible
+  - mandatory_criteria_evidenced
+confirmed: true

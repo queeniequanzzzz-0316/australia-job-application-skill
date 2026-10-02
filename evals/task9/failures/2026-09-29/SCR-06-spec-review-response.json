@@ -1,0 +1,12 @@
+{
+  "scenario_id": "SCR-06",
+  "responder_thread_id": "01a0dcc7-9cc4-7ea3-a790-e91a95b087f4",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "other_visible": [],
+    "final": "Decision: **Do not apply.** The “Entry-Level Data Assistant” role is excluded during Verification and remains outside Top N.\n\n- **AUD 180,000 salary:** Confirmed in the ad but unverified; unusually high for the advertised entry level role.\n- **Employer identity:** Employer name omitted, and the supplied public-register check found no matching business identity.\n- **Physical location:** Omitted and therefore unverified.\n- **AUD 250 equipment fee:** Confirmed in the ad. **Do not pay it.**\n- **Passport details before interview:** Confirmed in the ad. **Do not provide sensitive identity documents.**\n- **Independent-contractor term:** Confirmed in the ad, but the contracting entity and engagement terms cannot be verified. Do not treat this as ordinary employment or accept the arrangement without legitimate, independently verifiable terms.\n\n`verification_status: verification_failed`  \n`screening_status: excluded`  \n`application_stage: not_started`  \n`action_status: blocked`  \nVerdict: `do_not_apply`\n\nNo application preparation or submission should occur while these scam and contractor risks remain unresolved."
+  }
+}

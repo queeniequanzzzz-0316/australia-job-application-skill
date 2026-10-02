@@ -1,0 +1,9 @@
+{
+  "scenario_id": "SCR-01",
+  "responder_thread_id": "01a0dcc4-9ebb-78a3-a32f-74604606966c",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [], "progress": [], "status": [], "other_visible": [],
+    "final": "## Candidate Profile Summary: Confirmation Required\n\n- Relevant experience: Two years of inventory reporting at Employer Alpha\n- Skills: Microsoft Excel\n- Role intent: “Operations roles”; specific job titles remain unknown\n- Evidence: Experience and Excel are from the synthetic resume; role intent is candidate-stated\n- Onshore/offshore status: Unknown\n- Australian work rights and restrictions: Unknown\n- Sponsorship requirement: Unknown\n- Work stream: Unknown; professional, casual/part-time, or both\n- Target location and commute radius: Unknown\n- Employment type: Unknown\n- Work arrangement: Unknown\n- Availability/start date: Unknown\n- Salary or hourly-rate preference: Unknown\n- Qualifications, licences, and certificates: Unknown\n\nNo additional experience, skills, achievements, eligibility, or preferences have been inferred.\n\nPlease confirm or correct this profile and provide the missing details above. After profile confirmation, I will present a separate proposed search filter, including role titles and exclusions, location, radius, employment type, work arrangement, eligibility constraints, recency, pay settings, hard gates, and Top N, for your explicit confirmation.\n\nDiscovery has not started. No jobs have been searched, ranked, shortlisted, or prepared for application."
+  }
+}

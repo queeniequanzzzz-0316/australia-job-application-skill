@@ -1,0 +1,12 @@
+{
+  "scenario_id": "SCR-02",
+  "responder_thread_id": "01a0dcc4-9f0e-7da1-a12e-d69052cf1076",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "other_visible": [],
+    "final": "Employer Beta’s Business Analyst role in Melbourne, requisition BA-102, is **excluded at the Hard Gate**.\n\n- **Discovery:** No new search or filter confirmation is claimed; this role was supplied directly for assessment.\n- **Verification:** `verification_status: jd_verified`. The dated snapshot retrieved on 10 September 2026 at 09:00 AEST requires unrestricted Australian work rights and states that sponsorship is unavailable.\n- **Hard Gate:** Failed. Your confirmed profile records that you are offshore, have no Australian work rights, and require sponsorship.\n- **Screening:** `screening_status: excluded`\n- **Ranking and Top N:** Not performed. Verdict: `do_not_apply`.\n\nThe restriction is treated as mandatory, not negotiable. The role is not shortlisted, and no application preparation has begun."
+  }
+}

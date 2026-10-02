@@ -1,0 +1,9 @@
+{
+  "scenario_id": "SCR-03",
+  "responder_thread_id": "01a0e196-8051-76b2-9f03-220b3dbbac61",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [], "progress": [], "status": [], "other_visible": [],
+    "final": "Before reporting the decision, both persistence operations were completed for the Employer Gamma Registered Nurse role.\n\n**Current-state tracker row**\n\n- `discovery_status`: `discovered`\n- `verification_status`: `jd_verified`\n- `screening_status`: `excluded`\n- `application_stage`: `not_started`\n- `action_status`: `none`\n- `blocker_category`: `mandatory_registration`\n- `next_action`: none\n- `action_due_at`: empty\n- Blocker reason: current AHPRA registration is mandatory, while the confirmed profile explicitly records no current AHPRA registration.\n\n**Append-only history**\n\nA `status_changed` event was appended with the same five status values and blocker reason. Its supporting evidence records:\n\n- Employer Gamma’s dated Registered Nurse advertisement stating that current AHPRA registration is mandatory.\n- The supplied AHPRA public guidance confirming that current registration is required to practise.\n\nBoth sources were retrieved on 10 September 2026. No source URL or `jd_snapshot_path` was supplied, so neither was invented.\n\n**Decision:** Hard Gate failed; verdict `do_not_apply`. The role is excluded from Top N and Application Preparation. No score was calculated. The overseas nursing degree is not treated as current Australian registration, and no application was prepared or submitted."
+  }
+}

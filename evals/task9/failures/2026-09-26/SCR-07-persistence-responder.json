@@ -1,0 +1,9 @@
+{
+  "scenario_id": "SCR-07",
+  "responder_thread_id": "01a0dcc7-9d22-7eb1-af2f-f978de0d951b",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [], "progress": [], "status": [], "other_visible": [],
+    "final": "### Employer Epsilon — Driver\n\n**Verdict:** `do_not_apply`  \n**Hard Gate:** **Fail — excluded before Top N**\n\nThe role requires a **current HR heavy-vehicle licence**. Your confirmed profile records a current standard car licence and explicitly states that you do not hold a heavy-vehicle licence.\n\nYour customer-service experience matches a preferred criterion, but it cannot offset the missing mandatory licence. No ranking score is calculated after a Hard Gate failure.\n\n**Evidence Audit**\n\n- Required HR licence: dated Employer Epsilon job snapshot.\n- Missing HR licence: confirmed synthetic candidate profile.\n- Customer-service experience: confirmed synthetic candidate profile."
+  }
+}

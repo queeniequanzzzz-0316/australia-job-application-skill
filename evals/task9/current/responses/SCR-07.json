@@ -1,0 +1,9 @@
+{
+  "scenario_id": "SCR-07",
+  "responder_thread_id": "01a0e196-8139-76c0-b4a8-cbf01eeb161a",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [], "progress": [], "status": [], "other_visible": [],
+    "final": "Private records were updated before reporting this result.\n\n**Current-state tracker row**\n\n- `discovery_status`: `discovered`\n- `verification_status`: `jd_verified`\n- `screening_status`: `excluded`\n- `application_stage`: `not_started`\n- `action_status`: `blocked`\n- `blocker_category`: `missing_mandatory_capability`\n- `next_action`: Do not apply.\n- `action_due_at`: empty\n\n**Append-only history event**\n\n- `event_type`: `status_changed`\n- `to_status`: `discovered` / `jd_verified` / `excluded` / `not_started` / `blocked`\n- `reason`: Hard Gate failed because the candidate explicitly does not hold the mandatory current HR heavy-vehicle licence. Preferred customer-service experience does not satisfy or offset this requirement.\n- `jd_snapshot_path`: unavailable\n\n**Decision:** `do_not_apply`. The Employer Epsilon Driver role failed the Hard Gate and was excluded before Top N. No ranking score was calculated.\n\nEvidence: the supplied dated job snapshot identifies the HR heavy-vehicle licence as required and customer-service experience as preferred; the confirmed synthetic profile records a standard car licence, explicitly no heavy-vehicle licence, and customer-service experience. The source URL and snapshot path were not supplied and have not been invented."
+  }
+}

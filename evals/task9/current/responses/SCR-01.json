@@ -1,0 +1,9 @@
+{
+  "scenario_id": "SCR-01",
+  "responder_thread_id": "01a0dccd-cd44-7ad1-8fb8-edbc42a45342",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [], "progress": [], "status": [], "other_visible": [],
+    "final": "Private onboarding records have been updated:\n\n- Current-state candidate profile: `pending` confirmation\n- Append-only intake/profile event: recorded for this pending profile\n- Search filters: deferred until profile confirmation\n- Discovery: not started\n\nCandidate Profile Summary:\n\n- Target roles: Operations roles — candidate statement; specific titles unknown\n- Experience: Two years of inventory reporting at Employer Alpha — resume evidence\n- Skills: Microsoft Excel — resume evidence\n- Work stream: Unknown; Professional, Casual/Part-time, or both\n- Current location: Unknown\n- Location mode: Unknown; onshore or offshore must be confirmed explicitly\n- Australian work rights and restrictions: Unknown\n- Sponsorship requirement: Unknown\n- Preferred employment type: Unknown\n- Work arrangement: Unknown\n- Availability: Unknown\n- Commute or search radius: Unknown\n- Salary or hourly-rate preference: Unknown\n- Relevant qualifications and certificates: Unknown\n\nPlease confirm or correct the supported details and provide the unknown information. After you confirm the profile, I will prepare proposed search filters, including role titles, location, work arrangement, eligibility constraints, and Top N, for a separate confirmation before Discovery begins."
+  }
+}

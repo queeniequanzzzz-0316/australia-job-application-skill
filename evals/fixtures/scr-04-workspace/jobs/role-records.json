@@ -1,0 +1,119 @@
+{
+  "fixture_id": "SCR-04-A",
+  "profile_confirmed": true,
+  "filters_confirmed": true,
+  "requested_top_n": 10,
+  "roles": [
+    {
+      "role_id": "R1",
+      "canonical_job_id": "scr04-r1",
+      "canonical_url": "https://careers.scr04-employer-alpha.example/jobs/r1",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "jd_snapshot_path": "jobs/snapshots/scr04-r1.md",
+      "verification_status": "jd_verified",
+      "hard_gate_status": "PASS",
+      "ranking_status": "eligible",
+      "fit_evidence": ["Excel", "process mapping"],
+      "hr_assessment_input": "Eligibility and mandatory criteria are evidenced.",
+      "hiring_manager_assessment_input": "The evidenced skills match the stated delivery work.",
+      "duplicate_of": null
+    },
+    {
+      "role_id": "R2",
+      "canonical_job_id": "scr04-r2",
+      "canonical_url": "https://careers.scr04-employer-beta.example/jobs/ob-202",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "jd_snapshot_path": "jobs/snapshots/scr04-r2.md",
+      "verification_status": "jd_verified",
+      "hard_gate_status": "PASS",
+      "ranking_status": "eligible",
+      "fit_evidence": ["Jira", "requirements workshops"],
+      "hr_assessment_input": "Eligibility and mandatory criteria are evidenced.",
+      "hiring_manager_assessment_input": "The evidenced skills match the stated delivery work.",
+      "duplicate_of": null
+    },
+    {
+      "role_id": "R3",
+      "canonical_job_id": "scr04-r3",
+      "canonical_url": "https://careers.scr04-employer-gamma.example/jobs/r3",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "jd_snapshot_path": "jobs/snapshots/scr04-r3.md",
+      "verification_status": "jd_verified",
+      "hard_gate_status": "PASS",
+      "ranking_status": "eligible",
+      "fit_evidence": ["process mapping", "Excel"],
+      "hr_assessment_input": "Eligibility and mandatory criteria are evidenced.",
+      "hiring_manager_assessment_input": "The evidenced skills match the stated delivery work.",
+      "duplicate_of": null
+    },
+    {
+      "role_id": "R4",
+      "canonical_job_id": "scr04-r4",
+      "canonical_url": "https://careers.scr04-employer-delta.example/jobs/r4",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "jd_snapshot_path": "jobs/snapshots/scr04-r4.md",
+      "verification_status": "jd_verified",
+      "hard_gate_status": "PASS",
+      "ranking_status": "eligible",
+      "fit_evidence": ["Jira", "requirements gathering"],
+      "hr_assessment_input": "Eligibility and mandatory criteria are evidenced.",
+      "hiring_manager_assessment_input": "The evidenced skills match the stated delivery work.",
+      "duplicate_of": null
+    },
+    {
+      "role_id": "R5",
+      "canonical_job_id": "scr04-r5",
+      "canonical_url": "https://careers.scr04-employer-epsilon.example/jobs/r5",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "jd_snapshot_path": "jobs/snapshots/scr04-r5.md",
+      "verification_status": "jd_verified",
+      "hard_gate_status": "FAIL",
+      "ranking_status": "ineligible",
+      "failure_reason": "Sydney onsite is outside the confirmed location filter.",
+      "duplicate_of": null
+    },
+    {
+      "role_id": "R6",
+      "canonical_job_id": "scr04-r6",
+      "canonical_url": "https://careers.scr04-employer-zeta.example/jobs/r6",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "jd_snapshot_path": "jobs/snapshots/scr04-r6.md",
+      "verification_status": "jd_verified",
+      "hard_gate_status": "FAIL",
+      "ranking_status": "ineligible",
+      "failure_reason": "Current CPA registration is mandatory and explicitly absent.",
+      "duplicate_of": null
+    },
+    {
+      "role_id": "R7",
+      "canonical_job_id": "scr04-r2",
+      "canonical_url": "https://seek.example/jobs/scr04-r2-copy",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "jd_snapshot_path": "jobs/snapshots/scr04-r2.md",
+      "verification_status": "jd_verified",
+      "hard_gate_status": "FAIL",
+      "ranking_status": "duplicate",
+      "failure_reason": "Duplicate job-board copy of R2 requisition OB-202.",
+      "duplicate_of": "scr04-r2"
+    },
+    {
+      "role_id": "R8",
+      "canonical_job_id": "scr04-r8",
+      "canonical_url": "https://careers.scr04-employer-eta.example/jobs/r8",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "jd_snapshot_path": "jobs/snapshots/scr04-r8.md",
+      "verification_status": "verification_failed",
+      "hard_gate_status": "FAIL",
+      "ranking_status": "ineligible",
+      "failure_reason": "Application period closed before retrieval.",
+      "duplicate_of": null
+    }
+  ],
+  "top_n": [
+    {"canonical_job_id": "scr04-r1"},
+    {"canonical_job_id": "scr04-r2"},
+    {"canonical_job_id": "scr04-r3"},
+    {"canonical_job_id": "scr04-r4"}
+  ],
+  "shortfall": 6
+}

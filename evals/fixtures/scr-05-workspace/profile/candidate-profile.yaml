@@ -1,0 +1,24 @@
+market: Australia
+candidate_location_mode: onshore
+employment_streams:
+  - professional
+target_roles:
+  - Operations Analyst
+target_locations:
+  - Melbourne VIC
+work_rights:
+  status: unrestricted
+  restrictions: none
+  sponsorship_required: false
+salary:
+  basis: annual
+  target_aud: 90000
+evidence_inventory:
+  - id: evidence-operations-reporting
+    claim: Five years of operations reporting experience at fictional employer Candidate Services Pty Ltd.
+    source: candidate_document
+    obtained_at: 2026-09-10
+  - id: evidence-microsoft-excel
+    claim: Advanced Microsoft Excel skills used for operational dashboards, reconciliations, and monthly reporting.
+    source: candidate_document
+    obtained_at: 2026-09-10

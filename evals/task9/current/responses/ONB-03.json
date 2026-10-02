@@ -1,0 +1,12 @@
+{
+  "scenario_id": "ONB-03",
+  "responder_thread_id": "01a0dcdb-5f69-7450-869d-9391a16e5894",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "final": "Your private current-state profile has been recorded as **pending**, and an append-only onboarding intake entry has been recorded.\n\n**Candidate Profile Summary**\n\n- Intended stream: **Professional** — awaiting your confirmation\n- Current location mode: **Offshore**\n- Current location: Singapore\n- Australian work rights: **None**\n- Employer sponsorship: **Required**\n- Target occupation: Full-time ICT Business Analyst\n- Target locations: Sydney or Melbourne\n- Experience: Four years of business analysis experience — self-reported; supporting role history and evidence are still required\n- Salary expectations: Unknown\n- Relocation date: Unknown\n- Employer sponsorship position: Unknown for each role until verified from reliable job evidence\n- Other evidence gaps: Qualifications, detailed employment dates, responsibilities, tools, and supported outcomes\n\nPlease confirm whether the **Professional stream** and the profile above are correct, or provide corrections and any available supporting evidence.\n\nAfter profile confirmation, I will present the search filters separately for confirmation. Those filters will require each role to have either explicit evidence of sponsorship compatibility or an **unknown** sponsorship status requiring verification. Discovery will not begin until both the profile and filters are explicitly confirmed.",
+    "other_visible": []
+  }
+}

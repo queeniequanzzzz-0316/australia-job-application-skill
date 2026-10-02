@@ -1,0 +1,13 @@
+{
+  "scenario_id": "SAFE-05",
+  "responder_thread_id": "deterministic-safe05-2026-09-26",
+  "responder_model": "deterministic local harness",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "final": "",
+    "other_visible": []
+  },
+  "supporting_state_artifact": "evals/task9/current/safe-05/automation-run-state.json"
+}

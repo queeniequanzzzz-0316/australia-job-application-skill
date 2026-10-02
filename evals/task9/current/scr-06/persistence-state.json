@@ -1,0 +1,31 @@
+{
+  "artifact_status": "current_synthetic_evidence",
+  "canonical_job_id": "unverified-entry-level-data-assistant",
+  "event_id": "e57642a152aa47629370239583b27372",
+  "event_log_path": "tracker/events.jsonl",
+  "event_log_sha256": "dcdf038a63ae8e66830a57f16088bfd21147e02e6f256790c7a683209538cd2c",
+  "execution_trace": [
+    {
+      "canonical_job_id": "unverified-entry-level-data-assistant",
+      "operation": "event_appended",
+      "sequence": 1
+    },
+    {
+      "canonical_job_id": "unverified-entry-level-data-assistant",
+      "operation": "current_state_published",
+      "sequence": 2
+    },
+    {
+      "canonical_job_id": "unverified-entry-level-data-assistant",
+      "operation": "final_report_emitted",
+      "responder_thread_id": "01a0ead7-8219-7551-aa6f-16b7c4e058b2",
+      "sequence": 3
+    }
+  ],
+  "input_record": "../../../inputs/SCR-06-tracker-record.json",
+  "production_writer": "scripts/update_tracker.py",
+  "scenario_id": "SCR-06",
+  "synthetic": true,
+  "tracker_path": "tracker/applications.csv",
+  "tracker_sha256": "51820ba3ecf8a0e4152373cbec2a16e363a5fe136e1c2e6fe7590bfe5a054063"
+}

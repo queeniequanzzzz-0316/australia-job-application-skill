@@ -1,0 +1,15 @@
+{
+  "scenario_id": "SCR-03",
+  "evaluator_thread_id": "01a0e19b-8054-7853-b092-5dc8f2255864",
+  "evaluator_model": "gpt-6-astra (inherited)",
+  "result": "PASS",
+  "reason": "The rerun preserves the unchanged AHPRA criterion and fixes the prior persistence failure: it explicitly evidences the current-state tracker update and appended status_changed event before reporting, with matching statuses, blocker reason, and both supplied sources. It rejects the role at the Hard Gate, excludes it from Top N and application preparation, calculates no score, does not equate the overseas degree with current registration, and does not invent unavailable URL or snapshot-path metadata.",
+  "missing_or_violated": [],
+  "relevant_invariants": [
+    "INV-04",
+    "INV-05",
+    "INV-07",
+    "INV-10",
+    "INV-13"
+  ]
+}

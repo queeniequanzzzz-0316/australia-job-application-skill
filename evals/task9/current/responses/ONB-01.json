@@ -1,0 +1,12 @@
+{
+  "scenario_id": "ONB-01",
+  "responder_thread_id": "01a0dcd6-2189-72f2-b04d-56240dccde02",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "final": "Your private current-state profile is recorded as **pending confirmation**, and an append-only onboarding intake entry has been recorded.\n\n**Candidate Profile Summary**\n\n- Stream: Professional\n- Current residence: Melbourne, Victoria — candidate-provided\n- Onshore/offshore status: Unknown pending explicit confirmation; residence alone does not establish this\n- Australian work rights: Unrestricted — candidate-provided\n- Target role: Business Analyst — candidate-provided\n- Employment preference: Full-time — candidate-provided\n- Location preference: Within 30 km of Melbourne or hybrid — candidate-provided\n- Business Analyst, Employer Alpha, Jan 2023–Dec 2025: requirements workshops and process mapping — resume evidence\n- Project Coordinator, Employer Beta, Jul 2021–Dec 2022: scheduling and status reporting — resume evidence\n- Bachelor of Business, Institution Gamma, 2021 — resume evidence\n- Skills: Jira, Excel, requirements gathering, process mapping — resume evidence\n- People-management experience: Unknown; unsupported by the resume\n- SQL proficiency: Unknown; unsupported by the resume\n- Salary expectations: Unknown\n- Availability or notice period: Unknown\n- Willingness to travel: Unknown\n- Relevant certificates: Unknown\n\nPlease confirm or correct this profile and explicitly confirm whether you are currently onshore in Australia. You may also provide the unknown details or leave them unknown. Search filters will be proposed only after profile confirmation, and Discovery has not started.",
+    "other_visible": []
+  }
+}

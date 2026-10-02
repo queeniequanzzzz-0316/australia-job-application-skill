@@ -1,0 +1,14 @@
+{
+  "canonical_job_id": "employer-beta-ba-102",
+  "occurred_at": "2026-09-29T18:00:00+10:00",
+  "event_type": "status_changed",
+  "source": "employer_careers",
+  "discovery_status": "discovered",
+  "verification_status": "jd_verified",
+  "screening_status": "excluded",
+  "application_stage": "not_started",
+  "action_status": "blocked",
+  "next_action": "Do not apply to this vacancy.",
+  "blocker_category": "work_rights_and_sponsorship",
+  "reason": "The verified advertisement requires unrestricted Australian work rights and states that sponsorship is unavailable, while the confirmed offshore profile records no Australian work rights and requires sponsorship."
+}

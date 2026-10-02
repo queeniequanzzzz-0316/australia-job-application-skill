@@ -1,0 +1,12 @@
+{
+  "scenario_id": "ONB-03",
+  "responder_thread_id": "01a0c3f4-d3a2-7841-89e3-32067bb76265",
+  "responder_model": "gpt-6-astra (inherited)",
+  "complete_visible_transcript": {
+    "commentary": [],
+    "progress": [],
+    "status": [],
+    "final": "Please confirm or correct this candidate profile:\n\n- **Location status:** Offshore, currently living in Singapore\n- **Australian work rights:** No current Australian work rights\n- **Sponsorship:** Employer sponsorship required\n- **Work stream:** Professional\n- **Experience:** Four years of business analysis experience\n- **Target occupation:** ICT Business Analyst\n- **Employment type:** Full-time\n- **Target locations:** Sydney or Melbourne\n- **Salary expectations:** Unknown\n- **Relocation date:** Unknown\n- **Preferred work arrangement:** Unknown\n- **Evidence source:** Candidate statement; no independent verification supplied\n\nReply **“Confirmed”** if this is accurate, including the fields marked unknown, or provide corrections. You may also specify your preferred work arrangement and relocation timing, or confirm that they should remain unknown.\n\nAfter profile confirmation, I will present the search filters and Top N for separate confirmation. The proposed sponsorship rule will admit only roles with explicit evidence of compatible sponsorship or hold roles with unknown sponsorship status for verification. It will not treat an unknown as sponsorship-compatible, and roles explicitly excluding sponsorship will fail the hard gate. Discovery will not begin until both confirmations are complete.",
+    "other_visible": []
+  }
+}

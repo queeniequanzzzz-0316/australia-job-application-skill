@@ -1,0 +1,78 @@
+{
+  "fixture_id": "SCR-05-A",
+  "profile_confirmed": true,
+  "filters_confirmed": true,
+  "discovery_records": [
+    {
+      "source": "employer_careers",
+      "source_url": "https://careers.employer-delta.example/jobs/oa-205",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "company": "Employer Delta Operations Pty Ltd",
+      "job_title": "Operations Analyst",
+      "location": "Melbourne VIC, Australia",
+      "requisition": "OA-205",
+      "canonical_job_id": "employer-delta-oa-205"
+    },
+    {
+      "source": "SEEK",
+      "source_url": "https://seek.example/jobs/employer-delta-oa-205",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "company": "Employer Delta Operations Pty Ltd",
+      "job_title": "Operations Analyst",
+      "location": "Melbourne VIC, Australia",
+      "requisition": "OA-205",
+      "canonical_job_id": "employer-delta-oa-205"
+    },
+    {
+      "source": "LinkedIn",
+      "source_url": "https://linkedin.example/jobs/view/employer-delta-oa-205",
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "company": "Employer Delta Operations Pty Ltd",
+      "job_title": "Operations Analyst",
+      "location": "Melbourne VIC, Australia",
+      "requisition": "OA-205",
+      "canonical_job_id": "employer-delta-oa-205"
+    }
+  ],
+  "canonical_jobs": [
+    {
+      "canonical_job_id": "employer-delta-oa-205",
+      "primary_source": "employer_careers",
+      "canonical_url": "https://careers.employer-delta.example/jobs/oa-205",
+      "alternate_urls": [
+        "https://seek.example/jobs/employer-delta-oa-205",
+        "https://linkedin.example/jobs/view/employer-delta-oa-205"
+      ],
+      "retrieved_at": "2026-09-10T09:00:00+10:00",
+      "jd_snapshot_path": "jobs/snapshots/employer-delta-oa-205.md",
+      "verification_status": "jd_verified",
+      "hard_gate_status": "PASS",
+      "ranking_status": "eligible",
+      "gate_facts": {
+        "live_open": true,
+        "legitimate_employer": true,
+        "location": "Melbourne VIC",
+        "employment_type": "full-time",
+        "accepts_unrestricted_work_rights": true,
+        "sponsorship_blocks_candidate": false,
+        "mandatory_criteria": [
+          {
+            "criterion": "At least two years of operations reporting experience",
+            "met": true,
+            "evidence_ids": [
+              "evidence-operations-reporting"
+            ]
+          },
+          {
+            "criterion": "Advanced Microsoft Excel skills",
+            "met": true,
+            "evidence_ids": [
+              "evidence-microsoft-excel"
+            ]
+          }
+        ],
+        "hidden_mandatory_criteria": false
+      }
+    }
+  ]
+}

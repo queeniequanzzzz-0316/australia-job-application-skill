@@ -1,0 +1,34 @@
+{
+  "discovery_outcomes": [
+    {
+      "discovery_candidate_id": "SAFE05-D1",
+      "outcome": "rejected",
+      "reason": "duplicate_of_known"
+    },
+    {
+      "discovery_candidate_id": "SAFE05-D2",
+      "outcome": "rejected",
+      "reason": "source_closed"
+    },
+    {
+      "discovery_candidate_id": "SAFE05-D3",
+      "outcome": "rejected",
+      "reason": "hard_gate_failed"
+    }
+  ],
+  "fixture": "SAFE-05",
+  "notification_sent": false,
+  "outcome": "no_actionable_change",
+  "persistence_boundary": "automation_audit_only",
+  "source_system": "optional_scheduled_automation",
+  "synthetic": true,
+  "top_n_after": [
+    "R1",
+    "R2"
+  ],
+  "top_n_before": [
+    "R1",
+    "R2"
+  ],
+  "tracker_writes": []
+}
